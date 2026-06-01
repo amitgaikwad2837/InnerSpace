@@ -1,117 +1,122 @@
 # InnerSpace
 
-InnerSpace is a mobile-first AI personal growth companion built with Expo React Native.
+> A private, AI-powered personal growth companion for iOS and Android.
 
-It helps users:
-- Build habits
-- Reflect with guided prompts
-- Work through decisions
-- Talk with supportive AI helpers
+[![TypeScript](https://img.shields.io/badge/TypeScript-~6.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2056-black?logo=expo)](https://expo.dev)
+[![React Native](https://img.shields.io/badge/React%20Native-0.85-61dafb?logo=react)](https://reactnative.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-## Current Product Direction
+InnerSpace helps you build habits, journal your thoughts, navigate decisions, and have supportive AI conversations — all without an account, and with all data stored encrypted on your device.
 
-- Guest-first: no mandatory app login
-- First-run setup flow with:
-  - Legal acceptance
-  - AI tool setup
-  - Language selection
-  - Tone selection
-  - Helper selection
-- App lock support:
-  - PIN
-  - Biometric (face/fingerprint)
-  - Both
-- Localization support across 10 languages
-- Safety-first behavior with strict guardrails
+**Website:** [amitgaikwad2837.github.io/InnerSpace](https://amitgaikwad2837.github.io/InnerSpace/)
 
-## Feature Highlights
+---
 
-### AI & Chat
-- **Helpers Marketplace** — 33 categorised AI helpers pulled from a GitHub-hosted JSON catalog; no rebuild needed to add helpers
-- **Custom Helpers** — users can create their own helpers; safety rules are always injected client-side
-- **Share Custom Helpers** — share a helper via a deep link (`innerspace://import-agent?data=...`); recipients can import with one tap
-- **Conversation Summaries** — after 3+ AI replies, a summary is generated automatically and shown in the History screen
-- **Message Reactions** — thumbs-up / thumbs-down reactions on AI messages stored per conversation
-- **Share Message Snippet** — long-press any message to share the text via the OS share sheet
-- **Offline Fallback Prompts** — when no AI key is configured, the app shows reflection prompts from the current helper
-- **Quota Cooldown Message** — if the AI quota is exhausted, chat shows a friendly cooldown message with expected return time
-- **Helper Ready Notification** — on quota cooldown, the app can schedule a local notification when the helper is expected back
+## Features
 
-### Personal Growth
-- **Daily Check-in** — mood selector (5 emoji) + rotating daily reflection question on the Home screen; awards +5 XP and skips for the rest of the day once completed
-- **Journal / Reflect Mode** — guided daily prompts with optional AI-generated insight; full entry history with long-press delete
-- **Habit Tracker** — add daily or weekly habits; track streaks per habit; progress bar; awards +8 XP on completion
-- **XP & Streak** — persistent experience points and daily chat streak stored in AsyncStorage
+### Four Interaction Modes
+| Mode | Description |
+|------|-------------|
+| **Just Talk** | Multi-turn AI conversations with 35+ specialist helpers across 9 life categories |
+| **My Habits** | Daily/weekly habit tracking with streaks, XP rewards, and AI check-ins |
+| **Reflect** | Guided journaling with rotating prompts and AI-generated insights |
+| **Decide** | Structured two-option decision analysis with a clarity score |
 
-### Customisation
-- **Dark / Light / System Theme** — toggle in Settings; persisted across sessions
-- **Pinned Helpers** — heart-icon pin in the Helpers screen; pinned helpers always sort to the top
-- **Tone Selection** — Warm, Direct, or Playful AI response tone
+### Privacy-First Design
+- All data stored locally via AsyncStorage + expo-secure-store
+- Journal entries and habits encrypted with **AES-256-GCM**
+- API keys kept in the hardware-backed secure enclave — never transmitted
+- No backend servers, no analytics, no tracking
 
-### Notifications & Background
-- **Weekly Digest Notification** — local push notification every Sunday at 09:00 summarising the week's conversations; uses `expo-notifications` (no server required)
+### Other Highlights
+- **35+ helpers** across career, wellness, relationships, creativity, and more
+- **Custom helpers** — build your own and share them via deep link
+- **10 languages** — English, Spanish, French, German, Portuguese, Hindi, Japanese, Mandarin, Arabic, Italian
+- **Local AI option** — run Gemma / Phi / Llama on-device with no API key
+- **Multi-provider AI** — Gemini (default), OpenAI, Claude, Groq
+- **App lock** — PIN, biometric, or both
+- **Guest-first** — no account required to start
 
-### App Growth
-- **Rate InnerSpace** — quick action in Settings to open the app rating page
-- **Share InnerSpace** — native share sheet in Settings to share the app link
-- **Backup Import** — import an exported backup JSON from Files/Drive in Settings or onboarding
+---
 
 ## Tech Stack
 
-- Expo SDK 56
-- React Native 0.85
-- TypeScript
-- React Navigation
-- Zustand
-- AsyncStorage + SecureStore
-- i18next + react-i18next
+| Layer | Technology |
+|-------|-----------|
+| Framework | Expo SDK 56, React Native 0.85 |
+| Language | TypeScript ~6.0 |
+| Navigation | React Navigation (stack + bottom tabs) |
+| State | Zustand |
+| Storage | AsyncStorage + expo-secure-store |
+| Encryption | AES-256-GCM via Web Crypto API |
+| i18n | i18next + react-i18next (10 locales) |
+| Local AI | react-native-executorch |
+
+---
 
 ## Getting Started
 
-### 1. Install dependencies
+### Prerequisites
+- Node.js 18+
+- Expo CLI (`npm install -g expo-cli`)
+- Android Studio (Android) or Xcode (iOS/macOS)
 
+### Install & Run
+
+```bash
+# Install dependencies
 npm install
 
-### 2. Run the app
-
+# Start Metro bundler
 npm run start
+```
 
-Then launch on:
-- Android emulator/device
-- iOS simulator/device (macOS)
-- Expo Go
+Then press `a` for Android, `i` for iOS, or `w` for web.
 
-### 3. Platform shortcuts
+### Platform shortcuts
 
-- npm run android
-- npm run ios
-- npm run web
+```bash
+npm run android   # Android emulator/device
+npm run ios       # iOS simulator (macOS only)
+npm run web       # Browser (limited — designed for mobile)
+```
+
+---
 
 ## Project Structure
 
-- App entry and navigation: App.tsx
-- Screens: src/screens/
-- Services: src/services/
-- i18n files: src/i18n/locales/
-- Legal and region logic: src/constants/legal-notice.ts
-- Product docs: docs/
+```
+InnerSpace/
+├── App.tsx                    # Root component — navigation, deep links, app lock
+├── index.ts                   # Expo entry point
+├── app.json                   # Expo config (bundle ID, version, permissions)
+├── src/
+│   ├── screens/               # One file per screen (HomeScreen, ChatScreen, etc.)
+│   ├── services/              # Business logic (AI, storage, encryption, safety)
+│   ├── constants/             # Shared constants (agents catalog URL, legal keys)
+│   ├── context/               # ThemeContext (dark/light/system)
+│   ├── store/                 # Zustand auth store
+│   ├── i18n/                  # i18next setup + 10 locale files
+│   ├── types/                 # Shared TypeScript types
+│   └── utils/                 # Date helpers
+├── assets/                    # App icon, splash screen, Android adaptive icon
+├── docs/                      # GitHub Pages marketing website
+│   ├── index.html
+│   ├── privacy.html
+│   └── terms.html
+└── .github/
+    ├── agents.json            # Live helpers catalog (no rebuild needed to add helpers)
+    └── workflows/             # CI: typecheck, security scan, agent validation
+```
 
-## Helpers Marketplace Catalog (Repo-Pulled)
+---
 
-The helpers marketplace is driven by a JSON catalog file in the repository.
-This means you can add, remove, or edit helpers without rebuilding the app.
+## Adding a Helper
 
-- Catalog source: .github/agents.json
-- Config URL: app.json -> expo.extra.agentsCatalogUrl
-- Runtime behavior:
-  - On startup the app checks AsyncStorage for a cached catalog (24-hour TTL)
-  - If cache is fresh it is used immediately and a background refresh runs
-  - If cache is stale or absent the app fetches the catalog from the repo
-  - If the fetch fails the app falls back to the bundled helpers list
+The helpers catalog is a JSON file in the repo — no app rebuild needed to add or update helpers.
 
-### Adding a New Helper
-
-Add an object to the `agents` array in .github/agents.json:
+Edit `.github/agents.json` and add an object to the `agents` array:
 
 ```json
 {
@@ -121,73 +126,48 @@ Add an object to the `agents` array in .github/agents.json:
   "descriptionKey": "agent.my_helper.desc",
   "category": "personal_growth",
   "emoji": "🌟",
-  "expertise": "You are My Helper. Describe what this helper does and how it behaves.",
+  "expertise": "You are My Helper. Describe the helper's role and behaviour in detail.",
   "suggestedQuestions": [
-    "First suggested question?",
-    "Second suggested question?"
+    "What's one thing you'd like to work on today?",
+    "How are you feeling right now?"
   ],
   "isCustom": false,
   "isPremium": false
 }
 ```
 
-Valid categories: `home_family`, `nature_garden`, `health_wellness`, `career_learning`,
-`creative_hobbies`, `tech_digital`, `pets_animals`, `travel_culture`, `personal_growth`.
+**Valid categories:** `home_family`, `nature_garden`, `health_wellness`, `career_learning`, `creative_hobbies`, `tech_digital`, `pets_animals`, `travel_culture`, `personal_growth`
 
-Safety rules are always injected client-side and cannot be bypassed via the catalog JSON.
+> Safety rules are always injected client-side and cannot be bypassed through the catalog.
 
-## Legal Notice From Markdown (Repo-Pulled)
-
-The app supports loading legal notice content from a Markdown file in the repository.
-
-- Markdown source: docs/legal-notice.md
-- Config URL: app.json -> expo.extra.legalNoticeMarkdownUrl
-- Runtime behavior:
-  - App tries to fetch legal Markdown from the configured URL
-  - If fetch fails, app falls back to local in-app legal text
-
-### Placeholders Supported In Markdown
-
-- {{LEGAL_ACK_VERSION}}
-- {{REGION_LABEL}}
-- {{REGION_CODE}}
+---
 
 ## Localization
 
-Supported locales:
-- en
-- es
-- fr
-- de
-- pt
-- hi
-- zh
-- ja
-- ar
-- it
+Translation files live in `src/i18n/locales/`. Each locale exports a flat key/value object.
 
-Translation files are in src/i18n/locales/.
+Supported locales: `en`, `es`, `fr`, `de`, `pt`, `hi`, `zh`, `ja`, `ar`, `it`
 
-## Safety Notes
+To add a new locale, create a new file in `src/i18n/locales/` and register it in `src/i18n/index.ts`.
 
-InnerSpace is not a medical, legal, financial, or crisis service.
+---
 
-The app includes safety filtering and redirects users to professional support for sensitive categories.
+## Safety
 
-## Documentation
+InnerSpace is **not** a medical, legal, financial, or crisis service. A dual-layer safety filter (pre-send + post-response) redirects users to appropriate professional support for sensitive topics. See `src/services/safety-filter.ts` for the ruleset.
 
-- Full scope: docs/InnerSpace_Complete_Project_Scope.md
-- Legal notice markdown: docs/legal-notice.md
-- Helpers marketplace catalog: .github/agents.json
-- Verification rules: src/services/agents-catalog.ts
+If you or someone you know is in crisis: **call 988 (US)** or **116 123 (UK)** — or text HOME to 741741.
+
+---
 
 ## Contributing
 
-1. Create a branch
-2. Make focused changes
-3. Run checks and test flows
-4. Open a pull request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR process, restricted files, and code style guide.
+
+---
 
 ## License
 
-See LICENSE.
+[MIT](LICENSE) — built and maintained by [Amit Gaikwad](https://github.com/amitgaikwad2837)
+
+

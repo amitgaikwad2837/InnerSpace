@@ -48,6 +48,7 @@ import DecisionScreen from './src/screens/DecisionScreen';
 const Tab = createBottomTabNavigator();
 const RootStack = createStackNavigator();
 
+// Maps tab route names to their Ionicons glyph. Add a new entry when adding a tab.
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: 'home-outline',
   Agents: 'grid-outline',
@@ -57,6 +58,7 @@ const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Settings: 'settings-outline',
 };
 
+// AsyncStorage key shared with AgentsScreen — must stay in sync if ever renamed.
 const CUSTOM_AGENTS_KEY = '@innerspace:custom_agents';
 
 function MainTabs() {
@@ -107,19 +109,20 @@ function RootNavigator({ showSetup }: { showSetup: boolean }) {
   );
 }
 
+// Written by SetupFlowScreen once the user completes first-run setup.
 const ONBOARDING_DONE_KEY = '@innerspace:onboarding_done';
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const { setUser } = useAuthStore();
-  const [ready, setReady] = useState(false);
-  const [onboardingDone, setOnboardingDone] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
-  const [lockEnabled, setLockEnabled] = useState(false);
-  const [lockMode, setLockMode] = useState<AppLockMode>('pin');
-  const [pin, setPin] = useState('');
-  const [unlockError, setUnlockError] = useState('');
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [ready, setReady] = useState(false);             // false = show splash loader
+  const [onboardingDone, setOnboardingDone] = useState(false); // false = route to SetupFlow
+  const [isLocked, setIsLocked] = useState(false);        // true = show PIN/biometric screen
+  const [lockEnabled, setLockEnabled] = useState(false);  // user has app lock turned on
+  const [lockMode, setLockMode] = useState<AppLockMode>('pin'); // 'pin' | 'biometric' | 'both'
+  const [pin, setPin] = useState('');                     // PIN input field value
+  const [unlockError, setUnlockError] = useState('');     // shown below PIN field on wrong attempt
+  const [biometricAvailable, setBiometricAvailable] = useState(false); // device supports Face/Touch ID
 
   // Restore session from storage on cold start
   useEffect(() => {
@@ -195,7 +198,8 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Apply RTL layout if device language is RTL (e.g. Arabic)
+  // Force RTL layout when the device language requires it (Arabic, Hebrew, etc.).
+  // React Native caches the layout direction — this must run on mount, not lazily.
   useEffect(() => {
     const lang = getDeviceLanguage();
     const rtl = isRTL(lang);
@@ -204,6 +208,8 @@ export default function App() {
     }
   }, []);
 
+  // Re-lock the app whenever it comes back to the foreground.
+  // This ensures that backgrounding the app (e.g. switching apps) requires re-auth.
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
       if (nextState !== 'active') return;

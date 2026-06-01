@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# AI tool settings (local only, not relevant to contributors)
+.claude/
+
 # typescript
 *.tsbuildinfo
 
