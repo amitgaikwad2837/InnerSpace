@@ -1,0 +1,324 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  AppState,
+  I18nManager,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
+import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
+import { I18nextProvider } from 'react-i18next';
+import i18n, { getDeviceLanguage, isRTL } from './src/i18n';
+import { useAuthStore } from './src/store/auth';
+import { getUser, getAccessToken } from './src/services/storage-service';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  authenticateWithBiometric,
+  canUseBiometric,
+  getLockEnabled,
+  getLockMode,
+  type AppLockMode,
+  verifyAppPin,
+} from './src/services/app-lock';
+import { LEGAL_ACK_KEY, LEGAL_ACK_VERSION } from './src/constants/legal-notice';
+
+// ── Screens ───────────────────────────────────────────────────────────────────
+import HomeScreen from './src/screens/HomeScreen';
+import AgentsScreen from './src/screens/AgentsScreen';
+import ChatScreen from './src/screens/ChatScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import CreateAgentScreen from './src/screens/CreateAgentScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import SetupFlowScreen from './src/screens/SetupFlowScreen';
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+const Tab = createBottomTabNavigator();
+const RootStack = createStackNavigator();
+
+const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Home: 'home-outline',
+  Agents: 'grid-outline',
+  History: 'time-outline',
+  Settings: 'settings-outline',
+};
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons
+            name={TAB_ICON[route.name] ?? 'ellipse-outline'}
+            size={size}
+            color={color}
+          />
+        ),
+        tabBarActiveTintColor: '#4A9EFF',
+        tabBarInactiveTintColor: '#5A6478',
+        tabBarStyle: {
+          backgroundColor: '#111827',
+          borderTopColor: '#1F2937',
+        },
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen
+        name="Agents"
+        component={AgentsScreen}
+        options={{ tabBarLabel: 'Helpers' }}
+      />
+      <Tab.Screen name="History" component={HistoryScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+    </Tab.Navigator>
+  );
+}
+
+function RootNavigator({ showSetup }: { showSetup: boolean }) {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      {showSetup && <RootStack.Screen name="SetupFlow" component={SetupFlowScreen} />}
+      <RootStack.Screen name="Main" component={MainTabs} />
+      <RootStack.Screen name="Chat" component={ChatScreen} options={{ headerShown: false }} />
+      <RootStack.Screen name="CreateAgent" component={CreateAgentScreen} options={{ headerShown: false, presentation: 'modal' }} />
+      {!showSetup && <RootStack.Screen name="SetupFlow" component={SetupFlowScreen} />}
+    </RootStack.Navigator>
+  );
+}
+
+const ONBOARDING_DONE_KEY = '@innerspace:onboarding_done';
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+export default function App() {
+  const { setUser } = useAuthStore();
+  const [ready, setReady] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockEnabled, setLockEnabled] = useState(false);
+  const [lockMode, setLockMode] = useState<AppLockMode>('pin');
+  const [pin, setPin] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+
+  // Restore session from storage on cold start
+  useEffect(() => {
+    async function restore() {
+      try {
+        const [user, token] = await Promise.all([getUser(), getAccessToken()]);
+        if (user && token) {
+          setUser(user.userId, user.email);
+        }
+
+        const [done, legalAckVersion] = await Promise.all([
+          AsyncStorage.getItem(ONBOARDING_DONE_KEY),
+          AsyncStorage.getItem(LEGAL_ACK_KEY),
+        ]);
+        const legalAccepted = legalAckVersion === LEGAL_ACK_VERSION;
+        setOnboardingDone(done === 'true' && legalAccepted);
+
+        const [enabled, mode, bioAvailable] = await Promise.all([
+          getLockEnabled(),
+          getLockMode(),
+          canUseBiometric(),
+        ]);
+        setLockEnabled(enabled);
+        setLockMode(mode);
+        setBiometricAvailable(bioAvailable);
+        setIsLocked(enabled);
+      } finally {
+        setReady(true);
+      }
+    }
+    restore();
+  }, []);
+
+  // Apply RTL layout if device language is RTL (e.g. Arabic)
+  useEffect(() => {
+    const lang = getDeviceLanguage();
+    const rtl = isRTL(lang);
+    if (I18nManager.isRTL !== rtl) {
+      I18nManager.forceRTL(rtl);
+    }
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState !== 'active') return;
+      const enabled = await getLockEnabled();
+      if (enabled) {
+        setLockEnabled(true);
+        setIsLocked(true);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const canTryBiometric = useMemo(() => {
+    return biometricAvailable && (lockMode === 'biometric' || lockMode === 'both');
+  }, [biometricAvailable, lockMode]);
+
+  async function tryBiometricUnlock() {
+    const ok = await authenticateWithBiometric();
+    if (ok) {
+      setUnlockError('');
+      setIsLocked(false);
+    }
+  }
+
+  async function unlockWithPin() {
+    if (!pin.trim()) return;
+    const ok = await verifyAppPin(pin.trim());
+    if (!ok) {
+      setUnlockError('Incorrect PIN. Please try again.');
+      return;
+    }
+    setUnlockError('');
+    setPin('');
+    setIsLocked(false);
+  }
+
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0A0F1E', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color="#4A9EFF" size="large" />
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
+  if (lockEnabled && isLocked) {
+    return (
+      <View style={styles.lockRoot}>
+        <StatusBar style="light" />
+        <View style={styles.lockCard}>
+          <Text style={styles.lockEmoji}>🔒</Text>
+          <Text style={styles.lockTitle}>App Locked</Text>
+          <Text style={styles.lockBody}>Unlock InnerSpace to continue.</Text>
+
+          {(lockMode === 'pin' || lockMode === 'both') && (
+            <>
+              <TextInput
+                value={pin}
+                onChangeText={(v) => {
+                  setPin(v.replace(/[^0-9]/g, '').slice(0, 6));
+                  if (unlockError) setUnlockError('');
+                }}
+                keyboardType="number-pad"
+                secureTextEntry
+                style={styles.pinInput}
+                placeholder="Enter PIN"
+                placeholderTextColor="#5A6478"
+                maxLength={6}
+              />
+              <TouchableOpacity style={styles.unlockBtn} onPress={unlockWithPin} activeOpacity={0.85}>
+                <Text style={styles.unlockBtnText}>Unlock with PIN</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {canTryBiometric && (
+            <TouchableOpacity style={styles.bioBtn} onPress={tryBiometricUnlock} activeOpacity={0.85}>
+              <Text style={styles.bioBtnText}>Use Face/Fingerprint</Text>
+            </TouchableOpacity>
+          )}
+
+          {!!unlockError && <Text style={styles.unlockError}>{unlockError}</Text>}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <I18nextProvider i18n={i18n}>
+      <NavigationContainer>
+        <StatusBar style="light" />
+        <RootNavigator showSetup={!onboardingDone} />
+      </NavigationContainer>
+    </I18nextProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  lockRoot: {
+    flex: 1,
+    backgroundColor: '#0A0F1E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  lockCard: {
+    width: '100%',
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+  },
+  lockEmoji: {
+    fontSize: 36,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  lockTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  lockBody: {
+    color: '#8B9CC8',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  pinInput: {
+    backgroundColor: '#0A0F1E',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    color: '#FFFFFF',
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  unlockBtn: {
+    backgroundColor: '#1A3A6B',
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  unlockBtnText: {
+    color: '#4A9EFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  bioBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  bioBtnText: {
+    color: '#CBD5E1',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  unlockError: {
+    marginTop: 10,
+    color: '#EF4444',
+    textAlign: 'center',
+    fontSize: 12,
+  },
+});
+

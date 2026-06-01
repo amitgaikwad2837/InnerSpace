@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "InnerSpace",
+    "slug": "InnerSpace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "locales": {
+      "en": "./src/i18n/locales/en.ts",
+      "es": "./src/i18n/locales/es.ts",
+      "fr": "./src/i18n/locales/fr.ts",
+      "de": "./src/i18n/locales/de.ts",
+      "pt": "./src/i18n/locales/pt.ts",
+      "hi": "./src/i18n/locales/hi.ts",
+      "zh": "./src/i18n/locales/zh.ts",
+      "ja": "./src/i18n/locales/ja.ts",
+      "ar": "./src/i18n/locales/ar.ts",
+      "it": "./src/i18n/locales/it.ts"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "legalNoticeMarkdownUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/legal-notice.md"
+    }
+  }
+}
