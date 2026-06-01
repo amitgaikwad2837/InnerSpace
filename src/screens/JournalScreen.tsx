@@ -25,6 +25,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
+import { secureGet, secureSet } from '../services/storage-encryption';
 import { callAI } from '../services/gemini-service';
 import type { JournalEntry } from '../types';
 import { useTheme, DARK_COLORS } from '../context/ThemeContext';
@@ -113,7 +114,7 @@ export default function JournalScreen() {
   );
 
   async function loadEntries() {
-    const raw = await AsyncStorage.getItem(JOURNAL_KEY);
+    const raw = await secureGet(JOURNAL_KEY);
     if (raw) {
       const parsed: JournalEntry[] = JSON.parse(raw);
       setEntries(parsed.sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime()));
@@ -158,7 +159,7 @@ export default function JournalScreen() {
         entryDate: new Date(),
       };
       const updated = [entry, ...entries];
-      await AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify(updated));
+      await secureSet(JOURNAL_KEY, JSON.stringify(updated));
       setEntries(updated);
       await addXp(10);
       setContent('');

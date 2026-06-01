@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
+import { encryptData, decryptData } from './storage-encryption';
+
+// Keys whose values are encrypted at rest — must be decrypted on export / re-encrypted on import
+const ENCRYPTED_KEYS = [
+  '@innerspace:journal_entries',
+  '@innerspace:habits',
+];
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
@@ -37,7 +44,13 @@ function normalizePayload(raw: unknown): BackupPayload | null {
 
 export async function exportBackupAndShare(): Promise<{ shared: boolean; path: string }> {
   const keys = (await AsyncStorage.getAllKeys()) as string[];
-  const pairs = await Promise.all(keys.map(async (k): Promise<[string, string]> => [k, (await AsyncStorage.getItem(k)) ?? '']));
+  const pairs = await Promise.all(keys.map(async (k): Promise<[string, string]> => {
+    const raw = (await AsyncStorage.getItem(k)) ?? '';
+    if (ENCRYPTED_KEYS.includes(k) && raw) {
+      try { return [k, await decryptData(raw)]; } catch { /* legacy unencrypted */ }
+    }
+    return [k, raw];
+  }));
   const data = Object.fromEntries(pairs);
 
   const payload: BackupPayload = {
@@ -86,6 +99,14 @@ export async function importBackupFromFile(): Promise<{ restoredKeys: number; ca
     throw new Error('Backup is empty');
   }
 
-  await Promise.all(entries.map(([k, v]) => AsyncStorage.setItem(k, v)));
+  await Promise.all(entries.map(async ([k, v]) => {
+    if (ENCRYPTED_KEYS.includes(k) && v) {
+      try {
+        const encrypted = await encryptData(v);
+        return AsyncStorage.setItem(k, encrypted);
+      } catch { /* fall through to plaintext store */ }
+    }
+    return AsyncStorage.setItem(k, v);
+  }));
   return { restoredKeys: entries.length, cancelled: false };
 }

@@ -86,6 +86,7 @@ export default function ChatScreen() {
   const route = useRoute<any>();
   const agentId: string = route.params?.agentId ?? 'chef';
   const customAgent = route.params?.customAgent ?? null;
+  const routeConversationId: string | undefined = route.params?.conversationId;
 
   const agent = customAgent ?? getAgentById(agentId);
   const { email } = useAuthStore();
@@ -97,7 +98,7 @@ export default function ChatScreen() {
   const [cooldownNow, setCooldownNow] = useState(Date.now());
   const [tone, setTone] = useState('warm');
   const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({});
-  const conversationId = useRef(`conv_${Date.now()}`);
+  const conversationId = useRef(routeConversationId ?? `conv_${Date.now()}`);
   const listRef = useRef<FlatList>(null);
 
   const language = getDeviceLanguage();
@@ -118,6 +119,24 @@ export default function ChatScreen() {
         try { setReactions(JSON.parse(raw)); } catch { /* ignore */ }
       }
     });
+    // GAP-08: resume existing conversation messages from history
+    if (routeConversationId) {
+      AsyncStorage.getItem(CONVERSATIONS_KEY).then((raw) => {
+        if (!raw) return;
+        try {
+          const all: Conversation[] = JSON.parse(raw);
+          const found = all.find((c) => c.id === routeConversationId);
+          if (found?.messages?.length) {
+            const restored = found.messages.map((m) => ({
+              ...m,
+              timestamp: new Date(m.timestamp),
+            }));
+            setMessages(restored);
+            setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 100);
+          }
+        } catch { /* ignore corrupted data */ }
+      });
+    }
   }, []);
 
   useEffect(() => {

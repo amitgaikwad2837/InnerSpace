@@ -24,6 +24,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureGet, secureSet } from '../services/storage-encryption';
 import type { Habit } from '../types';
 import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 import { callAI } from '../services/gemini-service';
@@ -86,6 +87,7 @@ export default function HabitsScreen() {
   // GAP-02: missed habit nudge
   const [missedHabits, setMissedHabits] = useState<string[]>([]);
   const [missedDismissed, setMissedDismissed] = useState(false);
+  const [missedAiMsg, setMissedAiMsg] = useState('');
   // GAP-01: celebration
   const [celebMsg, setCelebMsg] = useState('');
   const [celebVisible, setCelebVisible] = useState(false);
@@ -103,7 +105,7 @@ export default function HabitsScreen() {
   );
 
   async function loadHabits() {
-    const raw = await AsyncStorage.getItem(HABITS_KEY);
+    const raw = await secureGet(HABITS_KEY);
     const parsed: Habit[] = raw ? JSON.parse(raw) : [];
     setHabits(parsed);
     // GAP-02: find habits with no completion in 3+ days
@@ -112,6 +114,13 @@ export default function HabitsScreen() {
       .filter((h) => h.frequency === 'daily' && h.lastCompletedAt && new Date(h.lastCompletedAt) < threeDaysAgo)
       .map((h) => h.name);
     setMissedHabits(missed);
+    if (missed.length > 0) {
+      // GAP-02: generate gentle AI check-in message in background
+      const prompt = `I have ${missed.length} habit${missed.length > 1 ? 's' : ''} I haven't done in 3+ days: ${missed.join(', ')}. Give me a single warm, non-judgmental sentence to gently encourage me to get back on track. No greeting, no advice, just one kind nudge.`;
+      callAI(prompt, 'You are a warm and supportive wellness coach. Reply with exactly one gentle encouraging sentence, no more.', [])
+        .then((res) => { if (!res.error && !res.isSafetyRedirect && res.text) setMissedAiMsg(res.text); })
+        .catch(() => {});
+    }
     // GAP-04: show weekly summary on Mondays
     const today = new Date();
     if (today.getDay() === 1) {
@@ -128,7 +137,7 @@ export default function HabitsScreen() {
 
   async function saveHabits(updated: Habit[]) {
     setHabits(updated);
-    await AsyncStorage.setItem(HABITS_KEY, JSON.stringify(updated));
+    await secureSet(HABITS_KEY, JSON.stringify(updated));
   }
 
   async function handleAdd() {
@@ -294,7 +303,14 @@ export default function HabitsScreen() {
       {missedHabits.length > 0 && !missedDismissed && (
         <View style={styles.missedBanner}>
           <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
-          <Text style={styles.missedText}>{t('habits.missed_body', { names: missedHabits.slice(0, 2).join(', ') })}</Text>
+          <View style={styles.missedContent}>
+            <Text style={styles.missedText}>
+              {t('habits.missed_body', { names: missedHabits.slice(0, 2).join(', ') })}
+            </Text>
+            {!!missedAiMsg && (
+              <Text style={styles.missedAiText}>{missedAiMsg}</Text>
+            )}
+          </View>
           <TouchableOpacity onPress={() => setMissedDismissed(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="close" size={16} color={colors.textDim} />
           </TouchableOpacity>
@@ -486,8 +502,10 @@ function createStyles(c: typeof DARK_COLORS) {
   saveModalBtnText: { color: c.accent, fontSize: 15, fontWeight: '700' },
   btnDisabled: { opacity: 0.4 },
   // GAP-02
-  missedBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, backgroundColor: c.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: c.danger },
-  missedText: { flex: 1, fontSize: 13, color: c.textSecondary, lineHeight: 18 },
+  missedBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginHorizontal: 16, marginBottom: 8, backgroundColor: c.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: c.danger },
+  missedContent: { flex: 1 },
+  missedText: { fontSize: 13, color: c.textSecondary, lineHeight: 18 },
+  missedAiText: { fontSize: 13, color: c.textMuted, lineHeight: 18, marginTop: 4, fontStyle: 'italic' },
   // GAP-04
   weeklySummaryCard: { marginHorizontal: 16, marginBottom: 8, backgroundColor: c.accentBg, borderRadius: 12, padding: 12, gap: 4, borderWidth: 1, borderColor: c.accent },
   weeklySummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },

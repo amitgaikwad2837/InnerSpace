@@ -163,6 +163,8 @@ export default function App() {
         if (!url.startsWith('innerspace://import-agent')) return;
         const encoded = new URL(url).searchParams.get('data');
         if (!encoded) return;
+        // Guard against DoS via oversized payloads (50 KB limit)
+        if (encoded.length > 65536) return;
         const raw = JSON.parse(decodeURIComponent(atob(encoded)));
         const partial = {
           id: `shared_${Date.now()}`,
