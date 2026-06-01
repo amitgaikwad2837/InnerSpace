@@ -17,7 +17,8 @@
         "How do I make pasta from scratch?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "handyman",
@@ -34,7 +35,8 @@
         "Why does my toilet keep running?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "home_organizer",
@@ -51,7 +53,8 @@
         "How do I organize a small wardrobe?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "parenting",
@@ -68,7 +71,8 @@
         "My baby won't sleep through the night"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "elder_care",
@@ -85,7 +89,8 @@
         "What questions should I ask a care home?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "interior_design",
@@ -102,7 +107,8 @@
         "My bedroom feels cold — how do I fix it?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "botanist",
@@ -119,7 +125,8 @@
         "How do I get rid of aphids naturally?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "landscape",
@@ -136,7 +143,8 @@
         "How do I fix a patchy lawn?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "fitness",
@@ -153,7 +161,8 @@
         "How do I build a habit of going to the gym?"
       ],
       "isCustom": false,
-      "isPremium": false
+      "isPremium": false,
+      "minimumAIMode": "cloud"
     },
     {
       "id": "yoga",

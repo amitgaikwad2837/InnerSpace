@@ -50,7 +50,7 @@ export default function SignInScreen() {
   const [pendingUser, setPendingUser] = useState<{ userId: string; email: string } | null>(null);
 
   // useProxy: true lets Expo Go work with a single Web client ID (no Android/iOS IDs needed)
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+  const redirectUri = AuthSession.makeRedirectUri({});
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {

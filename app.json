@@ -28,14 +28,17 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.InnerSpace"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "legalNoticeMarkdownUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/legal-notice.md",
-      "agentsCatalogUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/agents.json"
+      "agentsCatalogUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/.github/agents.json",
+      "shareAppUrl": "https://github.com/amitgaikwad2837/InnerSpace",
+      "rateAppUrl": "https://github.com/amitgaikwad2837/InnerSpace"
     }
   }
 }

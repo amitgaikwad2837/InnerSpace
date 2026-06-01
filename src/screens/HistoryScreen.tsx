@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAgentById } from '../constants/agents';
 import type { Conversation } from '../types';
+import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 
 const CONVERSATIONS_KEY = '@innerspace:conversations';
 
 export default function HistoryScreen() {
   const navigation = useNavigation<any>();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   // Reload every time tab comes into focus
@@ -92,11 +95,17 @@ export default function HistoryScreen() {
             {item.summary ?? lastMsg?.content ?? 'No messages yet'}
           </Text>
           {item.summary && (
-            <Text style={styles.cardSummaryBadge}>✦ summarised</Text>
+            <View style={styles.summaryBadge}>
+              <Ionicons name="sparkles" size={10} color={colors.accent} />
+              <Text style={styles.cardSummaryBadge}>summarised</Text>
+            </View>
           )}
-          <Text style={styles.cardCount}>
-            {item.messages.length} message{item.messages.length !== 1 ? 's' : ''}
-          </Text>
+          <View style={styles.msgCountRow}>
+            <Ionicons name="chatbubble-outline" size={11} color={colors.textDim} />
+            <Text style={styles.cardCount}>
+              {item.messages.length} message{item.messages.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
         </View>
         <Ionicons name="chevron-forward" size={16} color="#4A5568" />
       </TouchableOpacity>
@@ -107,7 +116,10 @@ export default function HistoryScreen() {
     <SafeAreaView style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>History</Text>
+        <View style={styles.headerLeft}>
+          <Ionicons name="time" size={22} color={colors.accent} />
+          <Text style={styles.headerTitle}>History</Text>
+        </View>
         {conversations.length > 0 && (
           <TouchableOpacity onPress={clearAll} style={styles.clearBtn}>
             <Ionicons name="trash-outline" size={18} color="#EF4444" />
@@ -133,6 +145,7 @@ export default function HistoryScreen() {
               onPress={() => navigation.navigate('Agents')}
               activeOpacity={0.85}
             >
+              <Ionicons name="grid-outline" size={15} color={colors.accent} />
               <Text style={styles.emptyBtnText}>Browse agents</Text>
             </TouchableOpacity>
           </View>
@@ -142,117 +155,30 @@ export default function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0A0F1E',
-    paddingTop: RNStatusBar.currentHeight ?? 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  clearBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1A0A0A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    gap: 10,
-    flexGrow: 1,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  cardEmoji: {
-    fontSize: 28,
-    width: 40,
-    textAlign: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  cardName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  cardDate: {
-    fontSize: 11,
-    color: '#5A6478',
-  },
-  cardPreview: {
-    fontSize: 13,
-    color: '#8B9CC8',
-    marginBottom: 4,
-  },
-  cardCount: {
-    fontSize: 11,
-    color: '#4A5568',
-  },
-  cardSummaryBadge: {
-    fontSize: 10,
-    color: '#4A9EFF',
-    marginTop: 2,
-  },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 32,
-  },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    fontSize: 14,
-    color: '#8B9CC8',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  emptyBtn: {
-    backgroundColor: '#1A3A6B',
-    borderRadius: 10,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-  },
-  emptyBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#4A9EFF',
-  },
-});
+function createStyles(c: typeof DARK_COLORS) {
+  return StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.background, paddingTop: RNStatusBar.currentHeight ?? 0 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle: { fontSize: 24, fontWeight: '700', color: c.text },
+  clearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1A0A0A', alignItems: 'center', justifyContent: 'center' },
+  listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 10, flexGrow: 1 },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, padding: 14, gap: 12 },
+  cardEmoji: { fontSize: 28, width: 40, textAlign: 'center' },
+  cardInfo: { flex: 1 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  cardName: { fontSize: 15, fontWeight: '600', color: c.text },
+  cardDate: { fontSize: 11, color: c.textDim },
+  cardPreview: { fontSize: 13, color: c.textMuted, marginBottom: 4 },
+  cardCount: { fontSize: 11, color: c.textDim },
+  summaryBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  msgCountRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  cardSummaryBadge: { fontSize: 10, color: c.accent, marginTop: 2 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 32 },
+  emptyEmoji: { fontSize: 48, marginBottom: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 8, textAlign: 'center' },
+  emptyBody: { fontSize: 14, color: c.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.accentBg, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
+  emptyBtnText: { fontSize: 15, fontWeight: '600', color: c.accent },
+  });
+}

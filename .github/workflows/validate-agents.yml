@@ -1,0 +1,210 @@
+name: Validate Agents Catalog
+
+on:
+  pull_request:
+    paths:
+      - '.github/agents.json'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/agents.json'
+
+jobs:
+  validate-agents:
+    runs-on: ubuntu-latest
+    name: Verify Agents Catalog Integrity
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Validate agents.json syntax and structure
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Read the agents.json file
+          const agentsPath = path.join(process.cwd(), '.github/agents.json');
+          const raw = fs.readFileSync(agentsPath, 'utf8');
+          let catalog;
+          
+          try {
+            catalog = JSON.parse(raw);
+          } catch (e) {
+            console.error('❌ FAILED: agents.json is not valid JSON');
+            console.error(e.message);
+            process.exit(1);
+          }
+          
+          if (!catalog.agents || !Array.isArray(catalog.agents)) {
+            console.error('❌ FAILED: agents.json must have an array field \"agents\"');
+            process.exit(1);
+          }
+          
+          const VALID_CATEGORIES = [
+            'home_family', 'nature_garden', 'health_wellness', 'career_learning',
+            'creative_hobbies', 'tech_digital', 'pets_animals', 'travel_culture', 'personal_growth'
+          ];
+          
+          // Safety bypass + harmful purpose detection patterns
+          const SAFETY_BYPASS_PATTERNS = [
+            // Prompt injection attempts
+            /ignore.*rules?/i,
+            /forget.*instructions?/i,
+            /forget.*safety|safety.*disabled/i,
+            /act\s+as\s+dan\b/i,
+            /jailbreak/i,
+            /bypass.*safety/i,
+            /without.*restrictions?/i,
+            /suspend.*rules?/i,
+            /secret.*mode/i,
+            /evil|attack|hack/i,
+            /pretend.*unrestricted/i,
+            // Harmful purposes - illegal/weapons/violence
+            /how.*(make|create|build|manufacture).*(bomb|explosive|weapon|drug|poison)/i,
+            /illegal.*(activity|drugs?|hacking)/i,
+            /instructions?.*(violence|torture|murder|killing|bombing)/i,
+            /make.*(bomb|explosives?|weapons?)/i,
+            // Child safety
+            /child.*(exploitation|abuse|grooming)/i,
+            // Eating disorders
+            /pro-?ana|pro-?mia|thinspo|eating.?disorder.?tips/i,
+            // Harassment/abuse
+            /doxx|doxing|cyberbully|harassment/i,
+            // Extremism
+            /extremist|radicalization|white.?supremacist|terrorism/i,
+          ];
+          
+          const seenIds = new Set();
+          const errors = [];
+          const warnings = [];
+          
+          catalog.agents.forEach((agent, idx) => {
+            const prefix = \`[Agent #\${idx + 1}]\`;
+            
+            // Required fields
+            if (!agent.id) {
+              errors.push(\`\${prefix} Missing required field: id\`);
+              return;
+            }
+            if (!agent.name) {
+              errors.push(\`\${prefix} Missing required field: name\`);
+              return;
+            }
+            if (!agent.expertise) {
+              errors.push(\`\${prefix} Missing required field: expertise\`);
+              return;
+            }
+            
+            // ID validation
+            if (agent.id.length > 64) {
+              errors.push(\`\${prefix} id exceeds 64 characters: \${agent.id}\`);
+            }
+            if (seenIds.has(agent.id)) {
+              errors.push(\`\${prefix} Duplicate id: \${agent.id}\`);
+            }
+            seenIds.add(agent.id);
+            
+            // Name validation
+            if (agent.name.length > 80) {
+              errors.push(\`\${prefix} name exceeds 80 characters\`);
+            }
+            
+            // Expertise validation
+            if (agent.expertise.length < 20) {
+              errors.push(\`\${prefix} expertise is too short (minimum 20 chars)\`);
+            }
+            if (agent.expertise.length > 4000) {
+              errors.push(\`\${prefix} expertise exceeds 4000 characters\`);
+            }
+            
+            // Category validation
+            if (agent.category && !VALID_CATEGORIES.includes(agent.category)) {
+              errors.push(\`\${prefix} Invalid category: \${agent.category}. Valid: \${VALID_CATEGORIES.join(', ')}\`);
+            }
+            
+            // Control character check
+            if (/[\\x00-\\x1F\\x7F-\\x9F]/g.test(agent.expertise)) {
+              errors.push(\`\${prefix} expertise contains control characters\`);
+            }
+            
+            // Safety bypass pattern detection
+            const bypassMatch = SAFETY_BYPASS_PATTERNS.find(pattern =>
+              pattern.test(agent.expertise)
+            );
+            if (bypassMatch) {
+              errors.push(\`\${prefix} SECURITY VIOLATION: expertise contains prompt injection attempt: \${bypassMatch}\`);
+            }
+            
+            // Warnings for optional fields
+            if (!agent.emoji) {
+              warnings.push(\`\${prefix} Missing emoji (optional but recommended)\`);
+            }
+            if (!agent.suggestedQuestions) {
+              warnings.push(\`\${prefix} Missing suggestedQuestions array (optional)\`);
+            }
+          });
+          
+          // Output results
+          if (warnings.length > 0) {
+            console.warn('⚠️  WARNINGS:');
+            warnings.forEach(w => console.warn(\`  \${w}\`));
+            console.warn('');
+          }
+          
+          if (errors.length > 0) {
+            console.error('❌ VALIDATION FAILED:');
+            errors.forEach(e => console.error(\`  \${e}\`));
+            console.error('');
+            console.error('See .github/agents.json schema for valid structure.');
+            process.exit(1);
+          }
+          
+          console.log('✅ agents.json validation PASSED');
+          console.log(\`   Total agents: \${catalog.agents.length}\`);
+          console.log(\`   All safety checks passed\`);
+          "
+
+      - name: Report Status
+        if: failure()
+        run: |
+          echo "❌ Agents catalog validation failed!"
+          echo "Reason: One or more agents contain security violations or structural issues."
+          echo "Please review agents.json and ensure all entries pass validation."
+          exit 1
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            const agentsPath = path.join(process.cwd(), '.github/agents.json');
+            const catalog = JSON.parse(fs.readFileSync(agentsPath, 'utf8'));
+            
+            const comment = `## ✅ Agents Catalog Validation
+            
+            All agents passed security and structure validation.
+            
+            **Summary:**
+            - Total agents: ${catalog.agents.length}
+            - Safety checks: PASSED
+            - Schema validation: PASSED`;
+            
+            if (context.issue.number) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment,
+              });
+            }

@@ -29,7 +29,7 @@ import {
   verifyAppPin,
 } from './src/services/app-lock';
 import { LEGAL_ACK_KEY, LEGAL_ACK_VERSION } from './src/constants/legal-notice';
-import { ThemeProvider } from './src/context/ThemeContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { scheduleWeeklyDigest } from './src/services/notifications';
 
 // ── Screens ───────────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import SetupFlowScreen from './src/screens/SetupFlowScreen';
 import JournalScreen from './src/screens/JournalScreen';
 import HabitsScreen from './src/screens/HabitsScreen';
+import DecisionScreen from './src/screens/DecisionScreen';
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const Tab = createBottomTabNavigator();
@@ -59,6 +60,7 @@ const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 const CUSTOM_AGENTS_KEY = '@innerspace:custom_agents';
 
 function MainTabs() {
+  const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -69,11 +71,11 @@ function MainTabs() {
             color={color}
           />
         ),
-        tabBarActiveTintColor: '#4A9EFF',
-        tabBarInactiveTintColor: '#5A6478',
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textDim,
         tabBarStyle: {
-          backgroundColor: '#111827',
-          borderTopColor: '#1F2937',
+          backgroundColor: colors.tabBar,
+          borderTopColor: colors.tabBarBorder,
         },
         headerShown: false,
       })}
@@ -98,6 +100,7 @@ function RootNavigator({ showSetup }: { showSetup: boolean }) {
       {showSetup && <RootStack.Screen name="SetupFlow" component={SetupFlowScreen} />}
       <RootStack.Screen name="Main" component={MainTabs} />
       <RootStack.Screen name="Chat" component={ChatScreen} options={{ headerShown: false }} />
+      <RootStack.Screen name="Decision" component={DecisionScreen} options={{ headerShown: false }} />
       <RootStack.Screen name="CreateAgent" component={CreateAgentScreen} options={{ headerShown: false, presentation: 'modal' }} />
       {!showSetup && <RootStack.Screen name="SetupFlow" component={SetupFlowScreen} />}
     </RootStack.Navigator>
