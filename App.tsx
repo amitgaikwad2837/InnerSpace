@@ -31,6 +31,7 @@ import {
 import { LEGAL_ACK_KEY, LEGAL_ACK_VERSION } from './src/constants/legal-notice';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { scheduleWeeklyDigest } from './src/services/notifications';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 import HomeScreen from './src/screens/HomeScreen';
@@ -298,14 +299,16 @@ export default function App() {
   }
 
   return (
-    <I18nextProvider i18n={i18n}>
-      <ThemeProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <RootNavigator showSetup={!onboardingDone} />
-        </NavigationContainer>
-      </ThemeProvider>
-    </I18nextProvider>
+    <ErrorBoundary>
+      <I18nextProvider i18n={i18n}>
+        <ThemeProvider>
+          <NavigationContainer>
+            <StatusBar style="light" />
+            <RootNavigator showSetup={!onboardingDone} />
+          </NavigationContainer>
+        </ThemeProvider>
+      </I18nextProvider>
+    </ErrorBoundary>
   );
 }
 
