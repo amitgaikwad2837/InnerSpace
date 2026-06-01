@@ -1,5 +1,10 @@
 # Setup and Recovery Runbook
 
+> **Status: Archived — Web Era**
+> This runbook was written for the abandoned Next.js/Supabase web pivot.
+> For the current Expo React Native app, use: `npm install` → `npm run start`.
+> See docs/Mobile_Checkpoint_2026-05-31.md for the current recovery procedure.
+
 ## Purpose
 This runbook ensures development can resume quickly after interruptions, failed commands, or environment issues.
 

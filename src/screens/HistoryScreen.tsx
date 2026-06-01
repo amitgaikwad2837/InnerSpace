@@ -88,9 +88,12 @@ export default function HistoryScreen() {
             <Text style={styles.cardName}>{agent?.name ?? item.agentId}</Text>
             <Text style={styles.cardDate}>{dateStr} · {timeStr}</Text>
           </View>
-          <Text style={styles.cardPreview} numberOfLines={1}>
-            {lastMsg?.content ?? 'No messages yet'}
+          <Text style={styles.cardPreview} numberOfLines={2}>
+            {item.summary ?? lastMsg?.content ?? 'No messages yet'}
           </Text>
+          {item.summary && (
+            <Text style={styles.cardSummaryBadge}>✦ summarised</Text>
+          )}
           <Text style={styles.cardCount}>
             {item.messages.length} message{item.messages.length !== 1 ? 's' : ''}
           </Text>
@@ -210,6 +213,11 @@ const styles = StyleSheet.create({
   cardCount: {
     fontSize: 11,
     color: '#4A5568',
+  },
+  cardSummaryBadge: {
+    fontSize: 10,
+    color: '#4A9EFF',
+    marginTop: 2,
   },
   empty: {
     flex: 1,

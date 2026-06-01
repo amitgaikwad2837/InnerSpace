@@ -1,5 +1,11 @@
 # InnerSpace Mobile — Implementation Blueprint
 
+> **Status: Partially Stale**
+> The architecture and phases here describe early design intent. The following items in this doc
+> no longer match the actual implementation: Gmail OAuth (replaced by guest-first), SQLite (replaced
+> by AsyncStorage only), React Native Paper (not used), NativeWind (not used).
+> For the current verified state see docs/Mobile_Checkpoint_2026-05-31.md.
+
 **Version:** 2.0 (Mobile Pivot)  
 **Date:** 2026-05-31  
 **Platform:** Expo React Native (iOS + Android)  

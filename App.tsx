@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AppState,
   I18nManager,
+  Linking,
   StyleSheet,
   Text,
   TextInput,
@@ -28,6 +29,8 @@ import {
   verifyAppPin,
 } from './src/services/app-lock';
 import { LEGAL_ACK_KEY, LEGAL_ACK_VERSION } from './src/constants/legal-notice';
+import { ThemeProvider } from './src/context/ThemeContext';
+import { scheduleWeeklyDigest } from './src/services/notifications';
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 import HomeScreen from './src/screens/HomeScreen';
@@ -37,6 +40,8 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import CreateAgentScreen from './src/screens/CreateAgentScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import SetupFlowScreen from './src/screens/SetupFlowScreen';
+import JournalScreen from './src/screens/JournalScreen';
+import HabitsScreen from './src/screens/HabitsScreen';
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const Tab = createBottomTabNavigator();
@@ -45,9 +50,13 @@ const RootStack = createStackNavigator();
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: 'home-outline',
   Agents: 'grid-outline',
+  Journal: 'book-outline',
+  Habits: 'checkmark-circle-outline',
   History: 'time-outline',
   Settings: 'settings-outline',
 };
+
+const CUSTOM_AGENTS_KEY = '@innerspace:custom_agents';
 
 function MainTabs() {
   return (
@@ -75,6 +84,8 @@ function MainTabs() {
         component={AgentsScreen}
         options={{ tabBarLabel: 'Helpers' }}
       />
+      <Tab.Screen name="Journal" component={JournalScreen} />
+      <Tab.Screen name="Habits" component={HabitsScreen} />
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
@@ -132,11 +143,51 @@ export default function App() {
         setLockMode(mode);
         setBiometricAvailable(bioAvailable);
         setIsLocked(enabled);
+
+        // Schedule weekly digest notification (non-blocking, fire-and-forget)
+        scheduleWeeklyDigest().catch(() => {});
       } finally {
         setReady(true);
       }
     }
     restore();
+  }, []);
+
+  // Deep link handler: innerspace://import-agent?data=<base64>
+  useEffect(() => {
+    async function handleUrl(url: string) {
+      try {
+        if (!url.startsWith('innerspace://import-agent')) return;
+        const encoded = new URL(url).searchParams.get('data');
+        if (!encoded) return;
+        const raw = JSON.parse(decodeURIComponent(atob(encoded)));
+        const partial = {
+          id: `shared_${Date.now()}`,
+          name: String(raw.n ?? '').slice(0, 64),
+          nameKey: String(raw.n ?? '').slice(0, 64),
+          descriptionKey: String(raw.d ?? '').slice(0, 120),
+          category: String(raw.c ?? 'other'),
+          emoji: String(raw.e ?? '🤖').slice(0, 4),
+          expertise: String(raw.x ?? '').slice(0, 800),
+          suggestedQuestions: [],
+          isCustom: true,
+          isPremium: false,
+        };
+        // Basic validation before storing
+        if (partial.name.length < 2 || partial.expertise.length < 20) return;
+        const existing = await AsyncStorage.getItem(CUSTOM_AGENTS_KEY);
+        const agents = existing ? JSON.parse(existing) : [];
+        agents.push({ ...partial, systemPrompt: partial.expertise });
+        await AsyncStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(agents));
+        console.log('[InnerSpace] Imported shared agent:', partial.name);
+      } catch {
+        // Silently ignore malformed deep links
+      }
+    }
+
+    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); });
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
   }, []);
 
   // Apply RTL layout if device language is RTL (e.g. Arabic)
@@ -237,10 +288,12 @@ export default function App() {
 
   return (
     <I18nextProvider i18n={i18n}>
-      <NavigationContainer>
-        <StatusBar style="light" />
-        <RootNavigator showSetup={!onboardingDone} />
-      </NavigationContainer>
+      <ThemeProvider>
+        <NavigationContainer>
+          <StatusBar style="light" />
+          <RootNavigator showSetup={!onboardingDone} />
+        </NavigationContainer>
+      </ThemeProvider>
     </I18nextProvider>
   );
 }

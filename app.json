@@ -34,7 +34,8 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "legalNoticeMarkdownUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/legal-notice.md"
+      "legalNoticeMarkdownUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/legal-notice.md",
+      "agentsCatalogUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/agents.json"
     }
   }
 }

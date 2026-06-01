@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import i18n, { SUPPORTED_LANGUAGES, type LanguageCode } from '../i18n';
 import { PREDEFINED_AGENTS } from '../constants/agents';
+import { getCatalogAgents } from '../services/agents-catalog';
 import {
   LEGAL_ACK_KEY,
   LEGAL_ACK_VERSION,
@@ -36,17 +37,23 @@ export default function SetupFlowScreen() {
   const [language, setLanguage] = useState<LanguageCode>('en');
   const [tone, setTone] = useState<ToneOption>('warm');
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>(['confidence']);
+  const [helperPool, setHelperPool] = useState(PREDEFINED_AGENTS.slice(0, 20));
 
   const legalNotice = useMemo(() => getLegalNotice(), []);
-  const helperPool = useMemo(() => PREDEFINED_AGENTS.slice(0, 20), []);
 
   useEffect(() => {
     let mounted = true;
-    async function loadLegalText() {
-      const text = await getEffectiveLegalNoticeText();
-      if (mounted) setLegalNoticeText(text);
+    async function loadData() {
+      const [legalText, catalog] = await Promise.all([
+        getEffectiveLegalNoticeText(),
+        getCatalogAgents(),
+      ]);
+      if (mounted) {
+        setLegalNoticeText(legalText);
+        setHelperPool(catalog.slice(0, 20));
+      }
     }
-    loadLegalText();
+    loadData();
     return () => {
       mounted = false;
     };

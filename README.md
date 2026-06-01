@@ -24,6 +24,31 @@ It helps users:
 - Localization support across 10 languages
 - Safety-first behavior with strict guardrails
 
+## Feature Highlights
+
+### AI & Chat
+- **Helpers Marketplace** — 33 categorised AI helpers pulled from a GitHub-hosted JSON catalog; no rebuild needed to add helpers
+- **Custom Helpers** — users can create their own helpers; safety rules are always injected client-side
+- **Share Custom Helpers** — share a helper via a deep link (`innerspace://import-agent?data=...`); recipients can import with one tap
+- **Conversation Summaries** — after 3+ AI replies, a summary is generated automatically and shown in the History screen
+- **Message Reactions** — thumbs-up / thumbs-down reactions on AI messages stored per conversation
+- **Share Message Snippet** — long-press any message to share the text via the OS share sheet
+- **Offline Fallback Prompts** — when no AI key is configured, the app shows reflection prompts from the current helper
+
+### Personal Growth
+- **Daily Check-in** — mood selector (5 emoji) + rotating daily reflection question on the Home screen; awards +5 XP and skips for the rest of the day once completed
+- **Journal / Reflect Mode** — guided daily prompts with optional AI-generated insight; full entry history with long-press delete
+- **Habit Tracker** — add daily or weekly habits; track streaks per habit; progress bar; awards +8 XP on completion
+- **XP & Streak** — persistent experience points and daily chat streak stored in AsyncStorage
+
+### Customisation
+- **Dark / Light / System Theme** — toggle in Settings; persisted across sessions
+- **Pinned Helpers** — heart-icon pin in the Helpers screen; pinned helpers always sort to the top
+- **Tone Selection** — Warm, Direct, or Playful AI response tone
+
+### Notifications & Background
+- **Weekly Digest Notification** — local push notification every Sunday at 09:00 summarising the week's conversations; uses `expo-notifications` (no server required)
+
 ## Tech Stack
 
 - Expo SDK 56
@@ -63,6 +88,46 @@ Then launch on:
 - i18n files: src/i18n/locales/
 - Legal and region logic: src/constants/legal-notice.ts
 - Product docs: docs/
+
+## Helpers Marketplace Catalog (Repo-Pulled)
+
+The helpers marketplace is driven by a JSON catalog file in the repository.
+This means you can add, remove, or edit helpers without rebuilding the app.
+
+- Catalog source: docs/agents.json
+- Config URL: app.json -> expo.extra.agentsCatalogUrl
+- Runtime behavior:
+  - On startup the app checks AsyncStorage for a cached catalog (24-hour TTL)
+  - If cache is fresh it is used immediately and a background refresh runs
+  - If cache is stale or absent the app fetches the catalog from the repo
+  - If the fetch fails the app falls back to the bundled helpers list
+
+### Adding a New Helper
+
+Add an object to the `agents` array in docs/agents.json:
+
+```json
+{
+  "id": "my_helper",
+  "name": "My Helper",
+  "nameKey": "agent.my_helper.name",
+  "descriptionKey": "agent.my_helper.desc",
+  "category": "personal_growth",
+  "emoji": "🌟",
+  "expertise": "You are My Helper. Describe what this helper does and how it behaves.",
+  "suggestedQuestions": [
+    "First suggested question?",
+    "Second suggested question?"
+  ],
+  "isCustom": false,
+  "isPremium": false
+}
+```
+
+Valid categories: `home_family`, `nature_garden`, `health_wellness`, `career_learning`,
+`creative_hobbies`, `tech_digital`, `pets_animals`, `travel_culture`, `personal_growth`.
+
+Safety rules are always injected client-side and cannot be bypassed via the catalog JSON.
 
 ## Legal Notice From Markdown (Repo-Pulled)
 
@@ -106,6 +171,8 @@ The app includes safety filtering and redirects users to professional support fo
 
 - Full scope: docs/InnerSpace_Complete_Project_Scope.md
 - Legal notice markdown: docs/legal-notice.md
+- Helpers marketplace catalog: docs/agents.json
+- Verification rules: src/services/agents-catalog.ts
 
 ## Contributing
 

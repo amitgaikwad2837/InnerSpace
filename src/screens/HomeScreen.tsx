@@ -15,12 +15,45 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/auth';
-import { PREDEFINED_AGENTS } from '../constants/agents';
+import { getCatalogAgents } from '../services/agents-catalog';
+import type { Agent } from '../types';
 import InnerSpaceLogo from '../components/InnerSpaceLogo';
 
 const STREAK_KEY = '@innerspace:streak';
 const XP_KEY = '@innerspace:xp';
 const SELECTED_HELPERS_KEY = '@innerspace:selected_helpers';
+const XP_STORE_KEY = '@innerspace:xp';
+const CHECKIN_KEY = '@innerspace:checkin_today';
+
+const CHECKIN_PROMPTS = [
+  'What\'s one thing you\'re grateful for right now?',
+  'How are you feeling in your body today?',
+  'What\'s on your mind most this morning?',
+  'What would make today feel like a success?',
+  'What are you looking forward to today?',
+  'What\'s one thing you want to let go of?',
+  'How did yesterday leave you feeling?',
+  'What do you need most from yourself today?',
+  'What\'s draining your energy lately?',
+  'What made you smile recently?',
+  'What\'s one small win you can celebrate?',
+  'What are you avoiding that needs attention?',
+  'How is your stress level today (1-10)?',
+  'What would your future self thank you for doing today?',
+  'What boundary do you need to protect today?',
+];
+
+const MOOD_OPTIONS = ['😔', '😕', '😐', '🙂', '😊'] as const;
+type Mood = typeof MOOD_OPTIONS[number];
+
+function getTodayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getDailyPrompt() {
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+  return CHECKIN_PROMPTS[dayOfYear % CHECKIN_PROMPTS.length];
+}
 
 function getGreetingKey(): 'home.greeting_morning' | 'home.greeting_afternoon' | 'home.greeting_evening' {
   const h = new Date().getHours();
@@ -42,14 +75,22 @@ export default function HomeScreen() {
   const [crisisVisible, setCrisisVisible] = useState(false);
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([]);
   const [featuredHelperId, setFeaturedHelperId] = useState<string | null>(null);
+  const [allAgents, setAllAgents] = useState<Agent[]>([]);
+
+  // Daily check-in
+  const [checkinDone, setCheckinDone] = useState(false);
+  const [checkinMood, setCheckinMood] = useState<Mood | null>(null);
+  const checkinPrompt = getDailyPrompt();
 
   useEffect(() => {
     async function loadProgressAndPreferences() {
-      const [s, x, selectedRaw] = await Promise.all([
+      const [catalog, s, x, selectedRaw] = await Promise.all([
+        getCatalogAgents(),
         AsyncStorage.getItem(STREAK_KEY),
         AsyncStorage.getItem(XP_KEY),
         AsyncStorage.getItem(SELECTED_HELPERS_KEY),
       ]);
+      setAllAgents(catalog);
       if (s) setStreak(parseInt(s, 10));
       if (x) setXp(parseInt(x, 10));
 
@@ -65,9 +106,13 @@ export default function HomeScreen() {
 
       setSelectedHelperIds(selected);
 
+      // Check if daily check-in is done
+      const checkin = await AsyncStorage.getItem(CHECKIN_KEY);
+      if (checkin === getTodayKey()) setCheckinDone(true);
+
       const pool = selected.length
-        ? PREDEFINED_AGENTS.filter((agent) => selected.includes(agent.id))
-        : PREDEFINED_AGENTS;
+        ? catalog.filter((agent) => selected.includes(agent.id))
+        : catalog;
       if (pool.length) {
         const picked = pool[Math.floor(Math.random() * pool.length)];
         setFeaturedHelperId(picked.id);
@@ -76,8 +121,25 @@ export default function HomeScreen() {
     loadProgressAndPreferences();
   }, []);
 
+  async function handleCheckinDone(mood: Mood) {
+    setCheckinMood(mood);
+    setCheckinDone(true);
+    await AsyncStorage.setItem(CHECKIN_KEY, getTodayKey());
+    // Award +5 XP
+    const raw = await AsyncStorage.getItem(XP_STORE_KEY);
+    const current = raw ? parseInt(raw, 10) : 0;
+    const next = current + 5;
+    await AsyncStorage.setItem(XP_STORE_KEY, String(next));
+    setXp(next);
+  }
+
+  function handleCheckinSkip() {
+    setCheckinDone(true);
+    AsyncStorage.setItem(CHECKIN_KEY, getTodayKey());
+  }
+
   const featuredHelper =
-    PREDEFINED_AGENTS.find((agent) => agent.id === featuredHelperId) ?? PREDEFINED_AGENTS[0];
+    allAgents.find((agent) => agent.id === featuredHelperId) ?? allAgents[0];
 
   const MODE_CARDS = [
     {
@@ -137,6 +199,24 @@ export default function HomeScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Daily check-in widget */}
+        {!checkinDone && (
+          <View style={styles.checkinCard}>
+            <Text style={styles.checkinTitle}>Daily Check-in ☀️</Text>
+            <Text style={styles.checkinPrompt}>{checkinPrompt}</Text>
+            <View style={styles.moodRow}>
+              {MOOD_OPTIONS.map((m) => (
+                <TouchableOpacity key={m} style={styles.moodBtn} onPress={() => handleCheckinDone(m)} activeOpacity={0.8}>
+                  <Text style={styles.moodEmoji}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity onPress={handleCheckinSkip} style={styles.skipBtn}>
+              <Text style={styles.skipBtnText}>Skip for today</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Mode cards grid */}
         <Text style={styles.sectionLabel}>{t('home.choose_mode_label')}</Text>
@@ -383,6 +463,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4A9EFF',
     fontWeight: '600',
+  },
+  checkinCard: {
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#2A3A5A',
+  },
+  checkinTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  checkinPrompt: {
+    fontSize: 14,
+    color: '#CBD5E1',
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  moodRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  moodBtn: {
+    padding: 6,
+  },
+  moodEmoji: {
+    fontSize: 30,
+  },
+  skipBtn: {
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  skipBtnText: {
+    fontSize: 12,
+    color: '#5A6478',
   },
   progressCard: {
     backgroundColor: '#111827',

@@ -1,5 +1,11 @@
 # InnerSpace Implementation Blueprint
 
+> **Status: Archived — Web Era**
+> This blueprint was written for the abandoned Next.js/Supabase web pivot.
+> The current implementation is a fully mobile Expo React Native app with no backend.
+> For the current implementation details see docs/Mobile_Implementation_Blueprint.md
+> and docs/Mobile_Checkpoint_2026-05-31.md.
+
 Version: 1.0  
 Date: 2026-05-31
 

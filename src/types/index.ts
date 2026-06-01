@@ -26,6 +26,7 @@ export interface Conversation {
   agentId: string;
   messages: Message[];
   createdAt: Date;
+  summary?: string; // Generated after chat ends
 }
 
 export interface Habit {

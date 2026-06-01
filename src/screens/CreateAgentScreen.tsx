@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar as RNStatusBar,
+  Share,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,10 +81,31 @@ export default function CreateAgentScreen() {
 
       Alert.alert('Agent created!', `${emoji} ${name} is ready to chat.`, [
         { text: 'Chat now', onPress: () => navigation.replace('Chat', { agentId: newAgent.id, customAgent: newAgent }) },
+        { text: 'Share agent', onPress: () => handleShareAgent(newAgent) },
         { text: 'Done', onPress: () => navigation.goBack() },
       ]);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleShareAgent(agent: Agent) {
+    try {
+      const payload = JSON.stringify({
+        n: agent.name,
+        e: agent.emoji,
+        c: agent.category,
+        d: agent.descriptionKey,
+        x: agent.systemPrompt.slice(0, 800),
+      });
+      const encoded = btoa(encodeURIComponent(payload));
+      const shareUrl = `innerspace://import-agent?data=${encoded}`;
+      await Share.share({
+        message: `Check out this InnerSpace helper: ${agent.emoji} ${agent.name}\n\nImport it: ${shareUrl}`,
+        title: `${agent.emoji} ${agent.name} — InnerSpace helper`,
+      });
+    } catch {
+      // User cancelled
     }
   }
 

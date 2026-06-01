@@ -15,16 +15,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  PREDEFINED_AGENTS,
   AGENT_CATEGORIES,
-  getAgentsByCategory,
   type AgentCategory,
 } from '../constants/agents';
+import { getCatalogAgents } from '../services/agents-catalog';
 import type { Agent } from '../types';
 
 const CATEGORY_KEYS = Object.keys(AGENT_CATEGORIES) as AgentCategory[];
 const ALL_KEY = '__all__';
 const SELECTED_HELPERS_KEY = '@innerspace:selected_helpers';
+const PINNED_HELPERS_KEY = '@innerspace:pinned_helpers';
 
 export default function AgentsScreen() {
   const { t } = useTranslation();
@@ -33,28 +33,52 @@ export default function AgentsScreen() {
   const [query, setQuery] = useState('');
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([]);
   const [onlyMyHelpers, setOnlyMyHelpers] = useState(false);
+  const [allAgents, setAllAgents] = useState<Agent[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
   useEffect(() => {
-    async function loadSelectedHelpers() {
-      const raw = await AsyncStorage.getItem(SELECTED_HELPERS_KEY);
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setSelectedHelperIds(parsed.filter((v) => typeof v === 'string'));
+    async function loadData() {
+      const [catalog, raw, pinnedRaw] = await Promise.all([
+        getCatalogAgents(),
+        AsyncStorage.getItem(SELECTED_HELPERS_KEY),
+        AsyncStorage.getItem(PINNED_HELPERS_KEY),
+      ]);
+      setAllAgents(catalog);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setSelectedHelperIds(parsed.filter((v) => typeof v === 'string'));
+          }
+        } catch {
+          // ignore corrupted preference
         }
-      } catch {
-        // ignore corrupted preference
+      }
+      if (pinnedRaw) {
+        try {
+          const parsed = JSON.parse(pinnedRaw);
+          if (Array.isArray(parsed)) setPinnedIds(parsed.filter((v) => typeof v === 'string'));
+        } catch {
+          // ignore
+        }
       }
     }
-    loadSelectedHelpers();
+    loadData();
   }, []);
+
+  async function togglePin(id: string) {
+    const updated = pinnedIds.includes(id)
+      ? pinnedIds.filter((p) => p !== id)
+      : [...pinnedIds, id];
+    setPinnedIds(updated);
+    await AsyncStorage.setItem(PINNED_HELPERS_KEY, JSON.stringify(updated));
+  }
 
   const filteredAgents = useMemo(() => {
     const pool =
       selectedCategory === ALL_KEY
-        ? PREDEFINED_AGENTS
-        : getAgentsByCategory(selectedCategory as AgentCategory);
+        ? allAgents
+        : allAgents.filter((a) => a.category === (selectedCategory as AgentCategory));
 
     let workingPool = pool;
     if (onlyMyHelpers) {
@@ -62,11 +86,13 @@ export default function AgentsScreen() {
     }
 
     if (!query.trim()) {
-      if (!selectedHelperIds.length) return workingPool;
+      if (!selectedHelperIds.length && !pinnedIds.length) return workingPool;
       return [...workingPool].sort((a, b) => {
+        const aPinned = pinnedIds.includes(a.id) ? 2 : 0;
+        const bPinned = pinnedIds.includes(b.id) ? 2 : 0;
         const aSelected = selectedHelperIds.includes(a.id) ? 1 : 0;
         const bSelected = selectedHelperIds.includes(b.id) ? 1 : 0;
-        return bSelected - aSelected;
+        return (bPinned + bSelected) - (aPinned + aSelected);
       });
     }
 
@@ -99,9 +125,10 @@ export default function AgentsScreen() {
   }
 
   function renderAgent({ item }: { item: Agent }) {
+    const isPinned = pinnedIds.includes(item.id);
     return (
       <TouchableOpacity
-        style={styles.agentCard}
+        style={[styles.agentCard, isPinned && styles.agentCardPinned]}
         activeOpacity={0.82}
         onPress={() => navigation.navigate('Chat', { agentId: item.id })}
       >
@@ -117,7 +144,13 @@ export default function AgentsScreen() {
             {t(item.descriptionKey)}
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#4A5568" />
+        <TouchableOpacity onPress={() => togglePin(item.id)} style={styles.pinBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons
+            name={isPinned ? 'heart' : 'heart-outline'}
+            size={18}
+            color={isPinned ? '#EF4444' : '#4A5568'}
+          />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   }
@@ -184,7 +217,9 @@ export default function AgentsScreen() {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>{t('helpers.none_found')}</Text>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyTitle}>{t('helpers.none_found')}</Text>
+            <Text style={styles.emptyBody}>Try a different search or category</Text>
           </View>
         }
         showsVerticalScrollIndicator={false}
@@ -311,6 +346,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     gap: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  agentCardPinned: {
+    borderColor: '#EF4444',
+    backgroundColor: '#1A0F0F',
   },
   agentEmoji: {
     fontSize: 28,
@@ -345,12 +386,28 @@ const styles = StyleSheet.create({
     color: '#8B9CC8',
     lineHeight: 18,
   },
+  pinBtn: {
+    padding: 4,
+  },
   empty: {
     alignItems: 'center',
     marginTop: 60,
+    paddingHorizontal: 32,
   },
-  emptyText: {
-    color: '#4A5568',
-    fontSize: 15,
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontSize: 13,
+    color: '#8B9CC8',
+    textAlign: 'center',
   },
 });

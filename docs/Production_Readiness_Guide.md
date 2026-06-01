@@ -1,5 +1,10 @@
 # Production Readiness Guide
 
+> **Status: Archived — Web Era**
+> This document was written for the abandoned Next.js/Supabase web pivot.
+> It does not reflect the current Expo React Native mobile implementation.
+> For current project state see docs/Mobile_Checkpoint_2026-05-31.md.
+
 ## 1. Environment Strategy
 Use three environments:
 - Development: local iteration and schema prototyping.

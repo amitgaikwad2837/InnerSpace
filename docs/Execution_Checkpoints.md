@@ -1,8 +1,11 @@
 # InnerSpace Execution Checkpoints
 
+> **Note:** CP-2026-05-31-01 and CP-2026-05-31-02 below are from an abandoned web/Next.js pivot.
+> The project pivoted fully to Expo React Native mobile. See CP-Mobile-2026-05-31 in Mobile_Checkpoint_2026-05-31.md for the current state.
+
 ## Checkpoint: CP-2026-05-31-01
 Date: 2026-05-31  
-Status: Active baseline checkpoint
+Status: **Superseded — web pivot abandoned**
 
 ### Completed
 - Scope analyzed from docs/InnerSpace_Complete_Project_Scope.md.

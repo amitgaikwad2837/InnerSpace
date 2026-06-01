@@ -35,6 +35,7 @@ import {
   type AppLockMode,
 } from '../services/app-lock';
 import { LEGAL_ACK_KEY, getEffectiveLegalNoticeText } from '../constants/legal-notice';
+import { useTheme } from '../context/ThemeContext';
 
 const TONE_KEY = '@innerspace:tone';
 const LANG_KEY = '@innerspace:language';
@@ -67,6 +68,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<any>();
   const { email } = useAuthStore();
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
 
   const [tone, setTone] = useState<ToneOption>('warm');
   const [language, setLanguage] = useState<LanguageCode>('en');
@@ -266,6 +268,21 @@ export default function SettingsScreen() {
               <Ionicons name="person" size={22} color="#4A9EFF" />
             </View>
             <Text style={styles.emailText}>{email || t('settings.guest_mode')}</Text>
+          </View>
+        </Section>
+
+        <Section title="Appearance">
+          <View style={styles.modeRow}>
+            {([['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '⚙️ System']] as const).map(([m, label]) => (
+              <TouchableOpacity
+                key={m}
+                style={[styles.modeChip, themeMode === m && styles.modeChipActive]}
+                onPress={() => setThemeMode(m)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.modeChipText, themeMode === m && styles.modeChipTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </Section>
 
