@@ -56,11 +56,13 @@ const API_KEY_STORE = 'innerspace_api_key';
 const AI_PROVIDER_KEY = '@innerspace:ai_provider';
 type AIProvider = 'gemini' | 'openai' | 'claude' | 'groq';
 const ONBOARDING_DONE_KEY = '@innerspace:onboarding_done';
-const CREDIT_NAME = 'Amit';
+const CREDIT_NAME = 'Amit Gaikwad';
 const CREDIT_ROLE = 'Creator, Product & Engineering';
-const CREDIT_WEBSITE = 'https://github.com/';
-const CREDIT_LINKEDIN = 'https://www.linkedin.com/';
-const APP_WEBSITE_URL = 'https://github.com/amitgaikwad2837/InnerSpace';
+const CREDIT_WEBSITE = 'https://github.com/amitgaikwad2837/InnerSpace';
+const CREDIT_LINKEDIN = 'https://www.linkedin.com/in/amit-gaikwad';
+const APP_WEBSITE_URL = 'https://amitgaikwad2837.github.io/InnerSpace/';
+const PRIVACY_URL = 'https://amitgaikwad2837.github.io/InnerSpace/privacy.html';
+const TERMS_URL = 'https://amitgaikwad2837.github.io/InnerSpace/terms.html';
 
 type ExpoExtra = {
   rateAppUrl?: string;
@@ -776,6 +778,8 @@ export default function SettingsScreen() {
         <Section title={t('settings.legal_privacy')}>
           <RowBtn icon="document-text-outline" label={t('settings.view_legal_notice')} onPress={handleViewLegalNotice} />
           <RowBtn icon="refresh-outline" label={t('settings.review_accept_notice_again')} onPress={handleReAcceptLegal} />
+          <RowBtn icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => Linking.openURL(PRIVACY_URL)} />
+          <RowBtn icon="reader-outline" label="Terms of Service" onPress={() => Linking.openURL(TERMS_URL)} />
         </Section>
 
         <Section title="Support">

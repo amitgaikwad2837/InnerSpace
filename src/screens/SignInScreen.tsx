@@ -200,8 +200,10 @@ export default function SignInScreen() {
       </TouchableOpacity>
 
       <Text style={styles.disclaimer}>
-        By continuing you agree to our Terms & Privacy Policy.{'\n'}
-        Your Google credentials are never stored on our servers.
+        By continuing you agree to our{' '}
+        <Text style={styles.disclaimerLink} onPress={() => Linking.openURL('https://amitgaikwad2837.github.io/InnerSpace/terms.html')}>Terms of Service</Text>
+        {' '}&amp;{' '}
+        <Text style={styles.disclaimerLink} onPress={() => Linking.openURL('https://amitgaikwad2837.github.io/InnerSpace/privacy.html')}>Privacy Policy</Text>.
       </Text>
     </View>
   );
@@ -290,6 +292,10 @@ const styles = StyleSheet.create({
     color: '#4A5568',
     textAlign: 'center',
     lineHeight: 16,
+  },
+  disclaimerLink: {
+    color: '#6366f1',
+    textDecorationLine: 'underline',
   },
   modalOverlay: {
     flex: 1,
