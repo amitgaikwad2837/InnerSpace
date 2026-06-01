@@ -9,6 +9,7 @@ export interface Agent {
   suggestedQuestions: string[];
   isCustom: boolean;
   isPremium: boolean;
+  minimumAIMode?: AIMode;
   description?: string; // legacy compat
 }
 
@@ -53,9 +54,40 @@ export interface User {
 
 export type ToneOption = 'warm' | 'direct' | 'motivational';
 
+export type AIProvider = 'gemini' | 'openai' | 'claude' | 'groq';
+
 export interface UserPreferences {
   language: string;
   tone: ToneOption;
   apiKey?: string;
-  aiProvider: 'gemini' | 'custom';
+  aiProvider: AIProvider;
+}
+
+export type AgeGroup = 'teen' | 'young_adult' | 'adult' | 'senior';
+export type AIMode = 'local' | 'cloud';
+export type LocalModel = 'gemma3n' | 'phi3mini' | 'llama321b' | 'qwen251b';
+
+export interface UserProfile {
+  name: string;
+  age: number | null;          // exact age stored, derived into group for prompts
+  ageGroup: AgeGroup | null;
+}
+
+export interface LocalModelInfo {
+  id: LocalModel;
+  label: string;
+  description: string;
+  sizeGB: number;
+  repoId: string;
+  supported: boolean;
+}
+
+export interface DecisionSession {
+  id: string;
+  decision: string;
+  optionA: string;
+  optionB: string;
+  analysis: string;
+  clarityScore?: number; // 1–10 self-rating
+  createdAt: Date;
 }

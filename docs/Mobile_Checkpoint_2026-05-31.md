@@ -11,7 +11,7 @@
 - 5-step onboarding SetupFlow: legal acceptance, AI tool setup, language, tone, helper selection
 - App lock: PIN, biometric (face/fingerprint), or both — enforced on resume
 - 35 predefined helpers across 9 life categories
-- Remote helpers marketplace catalog fetched from GitHub repo (docs/agents.json)
+- Remote helpers marketplace catalog fetched from GitHub repo (.github/agents.json)
   - 24-hour AsyncStorage cache with background refresh
   - Full verification pass: structure, category, length, control chars, safety bypass detection
   - Bundled fallback if fetch fails

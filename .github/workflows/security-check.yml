@@ -1,0 +1,65 @@
+name: Security Files Check
+
+on:
+  pull_request:
+    paths:
+      - 'src/services/safety-filter.ts'
+      - 'src/services/agents-catalog.ts'
+      - 'src/services/app-lock.ts'
+      - 'src/constants/agents.ts'
+      - 'src/constants/legal-notice.ts'
+      - 'app.json'
+
+jobs:
+  security-check:
+    runs-on: ubuntu-latest
+    name: Security Files Audit
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Audit security file changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            
+            const securityFiles = [
+              'src/services/safety-filter.ts',
+              'src/services/agents-catalog.ts',
+              'src/services/app-lock.ts',
+              'src/constants/agents.ts',
+              'src/constants/legal-notice.ts',
+              'app.json'
+            ];
+            
+            const modified = data
+              .filter(f => securityFiles.includes(f.filename))
+              .map(f => f.filename);
+            
+            if (modified.length === 0) {
+              return;
+            }
+            
+            const filesList = modified.map(f => '- ⚠️ `' + f + '`').join('\n');
+            const message = '## ⚠️ SECURITY-CRITICAL FILES MODIFIED\n\nThis PR modifies security files:\n\n' + filesList + '\n\n**Review Requirements:**\n- Code owner approval REQUIRED\n- All security tests must pass\n- No bypass patterns allowed\n- Validation logic must remain intact';
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+            
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['security', 'requires-review']
+            });
+

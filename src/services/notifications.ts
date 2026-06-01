@@ -9,6 +9,8 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import type { Conversation } from '../types';
 
 const CONVERSATIONS_KEY = '@innerspace:conversations';
@@ -100,11 +102,53 @@ export async function scheduleWeeklyDigest(): Promise<void> {
         body,
         data: { type: 'weekly_digest' },
       },
-      trigger,
+      trigger: { type: SchedulableTriggerInputTypes.DATE, date: trigger },
     });
 
     await AsyncStorage.setItem(NOTIF_SCHEDULED_KEY, thisWeek);
   } catch {
     // Silently ignore — notifications are non-critical
+  }
+}
+
+/**
+ * Schedules a one-time notification for when helper quota is expected to reset.
+ */
+export async function scheduleHelperReadyNotification(
+  readyAtIso: string,
+  helperName: string,
+  title?: string,
+  body?: string,
+): Promise<void> {
+  try {
+    const Notifications = await getExpoNotifications();
+    if (!Notifications) return;
+
+    const granted = await requestPermission();
+    if (!granted) return;
+
+    const existing = await Notifications.getAllScheduledNotificationsAsync();
+    for (const n of existing) {
+      if ((n.content.data as any)?.type === 'helper_ready') {
+        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+    }
+
+    const when = new Date(readyAtIso);
+    if (Number.isNaN(when.getTime())) return;
+
+    const minFuture = new Date(Date.now() + 20000);
+    const trigger = when.getTime() < minFuture.getTime() ? minFuture : when;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: title || '✨ Your helper is up again',
+        body: body || `${helperName} is ready whenever you are.`,
+        data: { type: 'helper_ready', helperName },
+      },
+      trigger: { type: SchedulableTriggerInputTypes.DATE, date: trigger },
+    });
+  } catch {
+    // Notification is non-critical; ignore failures.
   }
 }

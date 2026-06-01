@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { validateCustomAgent } from '../constants/agents';
 import type { Agent } from '../types';
@@ -35,6 +36,8 @@ const CATEGORY_OPTIONS = [
 export default function CreateAgentScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<any>();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -126,11 +129,11 @@ export default function CreateAgentScreen() {
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.intro}>
-            Describe an expert you want to talk to. Your agent will always follow the app's safety rules.
+            {t('custom_agent.intro')}
           </Text>
 
           {/* Emoji picker (simple text field for now) */}
-          <Field label="Emoji">
+          <Field label="Emoji" styles={styles}>
             <TextInput
               style={[styles.input, { maxWidth: 80, textAlign: 'center', fontSize: 28 }]}
               value={emoji}
@@ -140,10 +143,10 @@ export default function CreateAgentScreen() {
           </Field>
 
           {/* Name */}
-          <Field label={t('custom_agent.name_label')}>
+          <Field label={t('custom_agent.name_label')} styles={styles}>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Aquarium Expert"
+              placeholder={t('custom_agent.name_placeholder')}
               placeholderTextColor="#5A6478"
               value={name}
               onChangeText={setName}
@@ -152,10 +155,10 @@ export default function CreateAgentScreen() {
           </Field>
 
           {/* Short description */}
-          <Field label="Short description (shown on agent card)">
+          <Field label="Short description (shown on agent card)" styles={styles}>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Advice on freshwater and marine aquariums"
+              placeholder={t('custom_agent.desc_placeholder')}
               placeholderTextColor="#5A6478"
               value={description}
               onChangeText={setDescription}
@@ -164,10 +167,10 @@ export default function CreateAgentScreen() {
           </Field>
 
           {/* Expertise / system prompt seed */}
-          <Field label={t('custom_agent.desc_label')}>
+          <Field label={t('custom_agent.desc_label')} styles={styles}>
             <TextInput
               style={[styles.input, styles.multiline]}
-              placeholder="Describe their knowledge in detail. e.g. 'Expert in freshwater fish, water chemistry, tank cycling, and plant-only aquascaping.'"
+              placeholder={t('custom_agent.expertise_placeholder')}
               placeholderTextColor="#5A6478"
               value={expertise}
               onChangeText={setExpertise}
@@ -179,7 +182,7 @@ export default function CreateAgentScreen() {
           </Field>
 
           {/* Category */}
-          <Field label="Category">
+          <Field label="Category" styles={styles}>
             {CATEGORY_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.key}
@@ -238,7 +241,7 @@ IMPORTANT RULES — ALWAYS FOLLOW — NO EXCEPTIONS:
 Stay strictly within your area of expertise. If asked about something outside it, politely say so and suggest a better resource.`;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, styles }: { label: string; children: React.ReactNode; styles: ReturnType<typeof createStyles> }) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -247,121 +250,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#0A0F1E',
-    paddingTop: RNStatusBar.currentHeight ?? 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  scroll: {
-    padding: 20,
-  },
-  intro: {
-    fontSize: 14,
-    color: '#8B9CC8',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  field: {
-    marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#5A6478',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#FFFFFF',
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#1F2937',
-  },
-  multiline: {
-    minHeight: 100,
-    paddingTop: 12,
-  },
-  charCount: {
-    fontSize: 11,
-    color: '#4A5568',
-    textAlign: 'right',
-    marginTop: 4,
-  },
-  catOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  catOptionActive: {
-    borderColor: '#4A9EFF',
-    backgroundColor: '#0D1B30',
-  },
-  catOptionText: {
-    fontSize: 14,
-    color: '#8B9CC8',
-  },
-  catOptionTextActive: {
-    color: '#4A9EFF',
-    fontWeight: '600',
-  },
-  safetyNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: '#0D1B30',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#1A3A6B',
-  },
-  safetyText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#8B9CC8',
-    lineHeight: 18,
-  },
-  createBtn: {
-    backgroundColor: '#4A9EFF',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  createBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-});
+function createStyles(c: typeof DARK_COLORS) {
+  return StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.background, paddingTop: RNStatusBar.currentHeight ?? 0 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: c.text },
+  scroll: { padding: 20 },
+  intro: { fontSize: 14, color: c.textMuted, lineHeight: 20, marginBottom: 24 },
+  field: { marginBottom: 20 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.textDim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  input: { backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: c.text, fontSize: 15, borderWidth: 1, borderColor: c.border },
+  multiline: { minHeight: 100, paddingTop: 12 },
+  charCount: { fontSize: 11, color: c.textDim, textAlign: 'right', marginTop: 4 },
+  catOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 6, borderWidth: 1, borderColor: c.border },
+  catOptionActive: { borderColor: c.accent, backgroundColor: c.accentBg },
+  catOptionText: { fontSize: 15, color: c.textMuted },
+  catOptionTextActive: { color: c.accent, fontWeight: '600' },
+  safetyNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.accentBg, borderRadius: 10, padding: 12, marginBottom: 20 },
+  safetyText: { flex: 1, fontSize: 13, color: c.textMuted, lineHeight: 18 },
+  createBtn: { backgroundColor: c.accent, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  createBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  });
+}

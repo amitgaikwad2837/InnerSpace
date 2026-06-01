@@ -1,0 +1,33 @@
+name: Enforce Owner-Only Files
+
+on:
+  pull_request:
+    paths:
+      - '.github/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - '.eslintrc.js'
+      - 'app.json'
+      - 'app.config.js'
+      - 'eas.json'
+
+jobs:
+  enforce-owner-only:
+    runs-on: ubuntu-latest
+    name: Verify Owner-Only File Access
+
+    steps:
+      - name: Check PR author
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = 'amitgaikwad2837';
+            const author = context.payload.pull_request.user.login;
+            
+            if (author !== owner) {
+              core.setFailed(`❌ UNAUTHORIZED: Only @${owner} can modify owner-only files. PR author: @${author}`);
+              process.exit(1);
+            }
+            
+            console.log(`✅ Authorization verified: @${author} is the repository owner`);

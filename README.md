@@ -34,6 +34,8 @@ It helps users:
 - **Message Reactions** — thumbs-up / thumbs-down reactions on AI messages stored per conversation
 - **Share Message Snippet** — long-press any message to share the text via the OS share sheet
 - **Offline Fallback Prompts** — when no AI key is configured, the app shows reflection prompts from the current helper
+- **Quota Cooldown Message** — if the AI quota is exhausted, chat shows a friendly cooldown message with expected return time
+- **Helper Ready Notification** — on quota cooldown, the app can schedule a local notification when the helper is expected back
 
 ### Personal Growth
 - **Daily Check-in** — mood selector (5 emoji) + rotating daily reflection question on the Home screen; awards +5 XP and skips for the rest of the day once completed
@@ -48,6 +50,11 @@ It helps users:
 
 ### Notifications & Background
 - **Weekly Digest Notification** — local push notification every Sunday at 09:00 summarising the week's conversations; uses `expo-notifications` (no server required)
+
+### App Growth
+- **Rate InnerSpace** — quick action in Settings to open the app rating page
+- **Share InnerSpace** — native share sheet in Settings to share the app link
+- **Backup Import** — import an exported backup JSON from Files/Drive in Settings or onboarding
 
 ## Tech Stack
 
@@ -94,7 +101,7 @@ Then launch on:
 The helpers marketplace is driven by a JSON catalog file in the repository.
 This means you can add, remove, or edit helpers without rebuilding the app.
 
-- Catalog source: docs/agents.json
+- Catalog source: .github/agents.json
 - Config URL: app.json -> expo.extra.agentsCatalogUrl
 - Runtime behavior:
   - On startup the app checks AsyncStorage for a cached catalog (24-hour TTL)
@@ -104,7 +111,7 @@ This means you can add, remove, or edit helpers without rebuilding the app.
 
 ### Adding a New Helper
 
-Add an object to the `agents` array in docs/agents.json:
+Add an object to the `agents` array in .github/agents.json:
 
 ```json
 {
@@ -171,7 +178,7 @@ The app includes safety filtering and redirects users to professional support fo
 
 - Full scope: docs/InnerSpace_Complete_Project_Scope.md
 - Legal notice markdown: docs/legal-notice.md
-- Helpers marketplace catalog: docs/agents.json
+- Helpers marketplace catalog: .github/agents.json
 - Verification rules: src/services/agents-catalog.ts
 
 ## Contributing

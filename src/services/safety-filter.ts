@@ -132,6 +132,224 @@ through what matters to you personally.`,
     message: `I'm here to support growth and kindness. I can't engage with that topic, 
 but I'm happy to help you with something constructive.`,
   },
+
+  ADULT_CONTENT: {
+    keywords: [
+      'porn',
+      'XXX',
+      'explicit sexual',
+      'hardcore',
+      'nsfw',
+      'adult video',
+      'nude',
+      'naked',
+      'sex work',
+      'escort',
+      'prostitut',
+      'fetish',
+      'erotic',
+      'climax',
+      'orgasm',
+      'sexual content',
+      'adult content',
+      'explicit',
+      'obscene',
+      'lewd',
+      'sexually explicit',
+    ],
+    message: `InnerSpace is not designed for adult or explicit content. 
+I'm here to support your personal growth, wellbeing, and decision-making in a respectful way.
+
+Is there something else I can help you with?`,
+  },
+
+  ILLEGAL_ACTIVITY: {
+    keywords: [
+      'how to hack',
+      'steal',
+      'fraud',
+      'counterfeit',
+      'money laundering',
+      'bomb',
+      'explosives',
+      'make bombs',
+      'manufacturing drugs',
+      'cook meth',
+      'how to hack',
+      'sql injection',
+      'phishing',
+      'ransomware',
+      'malware',
+      'identity theft',
+      'credit card fraud',
+      'forgery',
+    ],
+    message: `I can't provide guidance on illegal activities. These are serious crimes that harm others.
+
+If you're facing pressure to do something illegal, or struggling with something that led you here, there are support services available.
+
+Is there something legal and constructive I can help with instead?`,
+  },
+
+  DRUG_ABUSE: {
+    keywords: [
+      'make drugs',
+      'manufacture heroin',
+      'cook crystal meth',
+      'synthesize cocaine',
+      'how to use',
+      'best way to inject',
+      'overdose on',
+      'drug recipe',
+      'get high',
+      'fentanyl',
+      'how to obtain illegal drugs',
+    ],
+    message: `I can't help with drug use or manufacturing. If you or someone you know is struggling with substance use, support is available.
+
+SAMHSA Helpline: 1-800-662-4357 (free, confidential, 24/7, US)
+Or contact a local addiction service.
+
+Is there something else I can help with?`,
+  },
+
+  EATING_DISORDERS: {
+    keywords: [
+      'pro-ana',
+      'pro-mia',
+      'thin inspiration',
+      'thinspo',
+      'eating disorder tips',
+      'how to restrict',
+      'how to purge',
+      'calorie restriction methods',
+      'avoid eating',
+      'eating disorder encouragement',
+    ],
+    message: `Eating disorders are serious health conditions. I can't provide tips or encouragement for disordered eating.
+
+If you're struggling, support is available:
+- BEAT Eating Disorders (UK): 0808 801 0677
+- National Association of Anorexia Nervosa (US): 1-888-375-7767
+
+You deserve care and recovery. Please reach out.`,
+  },
+
+  CHILD_SAFETY: {
+    keywords: [
+      'child exploitation',
+      'child abuse material',
+      'CSAM',
+      'groom a child',
+      'child predator',
+      'underage',
+      'children in sexual',
+      'how to abuse children',
+      'child endangerment',
+    ],
+    message: `I cannot engage with content involving harm to children. This is illegal and deeply harmful.
+
+If you're aware of child exploitation:
+- UK: National Crime Agency (NCMEC)
+- US: CyberTipline.org
+- Global: INTERPOL
+
+If you're having thoughts about harming children, please seek professional help immediately.`,
+  },
+
+  VIOLENCE_WEAPONS: {
+    keywords: [
+      'how to make a gun',
+      'build a bomb',
+      'make explosives',
+      'kill someone',
+      'how to poison',
+      'weapon instructions',
+      'make a knife',
+      'how to stab',
+      'torture methods',
+      'mass shooting',
+      'how to commit murder',
+    ],
+    message: `I cannot provide instructions for violence or weapons. These cause real harm.
+
+If you're having thoughts of harming yourself or others, please reach out immediately:
+- US: 988 (Suicide & Crisis Lifeline)
+- UK: 116 123 (Samaritans)
+- Global: Crisis Text Line, findahelpline.com
+
+You matter. Help is available.`,
+  },
+
+  DANGEROUS_MISINFORMATION: {
+    keywords: [
+      'vaccines cause autism',
+      'vaccine microchip',
+      'essential oils cure cancer',
+      'homeopathy cures everything',
+      'colloidal silver heals',
+      'drinking bleach cures',
+      'covid is a hoax',
+      'vaccines are poison',
+      'health scam',
+      'fake cure',
+      'miracle cure',
+    ],
+    message: `I can't share health misinformation. This can cause real harm.
+
+For health information, trust:
+- NHS (UK)
+- CDC (US)
+- WHO (Global)
+- Your doctor or pharmacist
+
+Is there something evidence-based I can help with?`,
+  },
+
+  CYBERBULLYING: {
+    keywords: [
+      'how to doxx someone',
+      'find someones address',
+      'publish private information',
+      'expose someones secrets',
+      'harass online',
+      'how to cyberbully',
+      'send hate messages',
+      'coordinate harassment',
+      'revenge porn',
+      'leak someones photos',
+    ],
+    message: `Cyberbullying and harassment are harmful and often illegal. I can't help with this.
+
+If you're experiencing harassment:
+- Report to the platform (Twitter, Instagram, etc.)
+- Contact local police if threats are made
+- Reach out to a trusted adult or counselor
+
+If you're struggling with anger toward someone, I can help you work through that constructively.`,
+  },
+
+  EXTREMISM: {
+    keywords: [
+      'extremist ideology',
+      'radicalization',
+      'join a cult',
+      'white supremacist',
+      'nazi ideology',
+      'isis recruitment',
+      'terrorist organization',
+      'extremist recruitment',
+      'indoctrination',
+    ],
+    message: `I can't engage with extremist ideology or help with radicalization.
+
+If you're being recruited or feeling pressured:
+- Life After Hate (liftedhope.org) — deradicalization support
+- Exit programs available in most countries
+- Talk to someone you trust
+
+If you've had harmful thoughts, speaking with a counselor can help you find a healthier path.`,
+  },
 };
 
 export function checkSafety(userMessage: string): {
@@ -156,3 +374,14 @@ export function checkSafety(userMessage: string): {
 
   return { isSafe: true, redirectMessage: null, category: null };
 }
+
+/**
+ * Check for adult/explicit content in text
+ * Used to validate agents and agent descriptions
+ */
+export function containsAdultContent(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  const adultKeywords = SAFETY_RULES.ADULT_CONTENT?.keywords || [];
+  return adultKeywords.some((keyword) => lowerText.includes(keyword));
+}
+

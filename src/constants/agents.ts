@@ -6,6 +6,9 @@
  * System prompts are language-aware — AI always responds in the user's language.
  */
 
+import { containsAdultContent } from '../services/safety-filter';
+import type { AIMode } from '../types';
+
 export interface Agent {
   id: string;
   name: string;
@@ -17,6 +20,7 @@ export interface Agent {
   suggestedQuestions: string[];
   isCustom: boolean;
   isPremium: boolean;          // Reserved — all false for now
+  minimumAIMode?: AIMode;
 }
 
 export type AgentCategory =
@@ -320,6 +324,7 @@ Redirect specific employment legal questions to an employment solicitor or HR pr
       "I want to change careers — where do I start?",
       "How do I handle a difficult manager?",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -340,6 +345,7 @@ Guide and explain — do not simply do the work for them.`),
       "What's the best way to study for exams?",
       "Help me structure my essay",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -360,6 +366,7 @@ Encourage honest self-presentation — never suggest exaggerating or lying.`),
       "What should I ask at the end of an interview?",
       "Help me write a cover letter",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -379,6 +386,7 @@ Be realistic about challenges while staying encouraging. Redirect legal and fina
       "How do I price my services?",
       "What goes in a simple business plan?",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -399,6 +407,7 @@ Keep it fun and low-pressure. Review previously learned words naturally.`),
       "Practice French conversation with me",
       "What are the most useful Japanese phrases?",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -459,6 +468,7 @@ Give specific actionable feedback. Ask what they are working on before starting.
       "How do I write a compelling first sentence?",
       "Give me a creative writing prompt",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -500,6 +510,7 @@ Never recommend pirated software or actions that compromise security.`),
       "What's a good free antivirus?",
       "How do I back up my photos?",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -539,6 +550,7 @@ If a user describes active financial fraud, encourage them to contact their bank
       "Is this email a phishing attempt?",
       "How do I protect my personal data online?",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -601,6 +613,7 @@ Always recommend checking official government travel advisories.`),
       "Help me plan a Japan itinerary",
       "What do I need to know before visiting India?",
     ],
+    minimumAIMode: 'cloud',
     isCustom: false, isPremium: false,
   },
 
@@ -734,6 +747,21 @@ export function getAgentsByCategory(category: AgentCategory): Agent[] {
   return PREDEFINED_AGENTS.filter((a) => a.category === category);
 }
 
+const HUMAN_VOICE_SUFFIX = `
+
+COMMUNICATION STYLE — NON-NEGOTIABLE:
+- Speak like a real, warm person — not like a chatbot, assistant, or AI system.
+- Use natural, everyday language. Avoid formal phrasing, corporate tone, or academic language.
+- Never begin a reply with "Certainly!", "Of course!", "Absolutely!", "Great question!", "Sure!", or any hollow filler opener.
+- Do not refer to yourself as an AI, a model, a language model, or an assistant.
+- Do not say "As an AI..." or "I don't have personal experiences, but..." — just respond naturally.
+- Match the user's energy: conversational when they are chatting, focused when they need help.
+- Use contractions (I'm, you're, that's, it's) to sound natural.
+- Keep replies concise unless the topic genuinely needs depth. No padding.
+- If you do not know something, say so plainly and directly without disclaimers stacked on disclaimers.
+- Show genuine curiosity and warmth. Ask one follow-up question at a time when it helps.
+`;
+
 /** Inject tone and language into a specific agent's system prompt at call time */
 export function buildAgentSystemPrompt(
   agent: Agent,
@@ -742,7 +770,8 @@ export function buildAgentSystemPrompt(
 ): string {
   return agent.systemPrompt
     .replace('{TONE}', tone)
-    .concat(`\n\nIMPORTANT: The user's device language is "${language}". Respond in that language unless they write in a different one.`);
+    .concat(`\n\nIMPORTANT: The user's device language is "${language}". Respond in that language unless they write in a different one.`)
+    .concat(HUMAN_VOICE_SUFFIX);
 }
 
 /** Validate a user-defined custom agent name/description against safety rules */
@@ -750,12 +779,43 @@ export function validateCustomAgent(name: string, description: string): {
   valid: boolean;
   reason?: string;
 } {
+  // Check for adult content first (strict enforcement)
+  if (containsAdultContent(name) || containsAdultContent(description)) {
+    return {
+      valid: false,
+      reason: 'InnerSpace does not support adult or explicit content. Please create an agent for appropriate topics.',
+    };
+  }
+
+  // Check for harmful purposes (illegal, violence, abuse, etc.)
+  const HARMFUL_PURPOSES = [
+    { pattern: /how.*(make|create|build|manufacture).*(bomb|explosive|weapon|poison|drug)/i, topic: 'weapons/explosives/drugs' },
+    { pattern: /illegal|hacking|theft|fraud|counterfeiting/i, topic: 'illegal activities' },
+    { pattern: /instructions?.*(violence|torture|murder|killing)/i, topic: 'violence' },
+    { pattern: /pro-?ana|pro-?mia|thinspo|eating.?disorder.?tips/i, topic: 'eating disorders' },
+    { pattern: /child.*(exploitation|abuse|grooming|endangerment)/i, topic: 'child exploitation' },
+    { pattern: /doxx|doxing|cyberbully|harassment/i, topic: 'harassment/doxxing' },
+    { pattern: /extremist|radicalization|white.?supremacist|terrorism/i, topic: 'extremism' },
+  ];
+
+  const combined = (name + ' ' + description).toLowerCase();
+  
+  for (const { pattern, topic } of HARMFUL_PURPOSES) {
+    if (pattern.test(combined)) {
+      return {
+        valid: false,
+        reason: `Custom agents cannot be created for ${topic}. InnerSpace supports constructive personal growth only.`,
+      };
+    }
+  }
+
+  // Original blocked purposes
   const BLOCKED_PURPOSES = [
     'suicide', 'self harm', 'harm', 'hurt', 'kill', 'weapon', 'bomb',
     'drug', 'illegal', 'hack', 'diagnose', 'prescribe', 'legal advice',
     'financial advice', 'investment',
   ];
-  const combined = (name + ' ' + description).toLowerCase();
+  
   for (const word of BLOCKED_PURPOSES) {
     if (combined.includes(word)) {
       return {

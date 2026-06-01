@@ -5,7 +5,7 @@
  * Caches locally in AsyncStorage with a 24-hour TTL.
  * Falls back to the bundled PREDEFINED_AGENTS if the fetch fails or is stale.
  *
- * To add, remove, or edit helpers: edit docs/agents.json in the repo.
+ * To add, remove, or edit helpers: edit .github/agents.json in the repo.
  * Safety rules (SAFETY_PREFIX) are always injected client-side and cannot
  * be bypassed by editing the catalog JSON.
  */
@@ -13,7 +13,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { PREDEFINED_AGENTS } from '../constants/agents';
-import type { Agent } from '../types';
+import { containsAdultContent } from './safety-filter';
+import type { Agent, AIMode } from '../types';
 
 const CACHE_KEY = '@innerspace:agents_catalog_cache';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -22,7 +23,7 @@ type ExpoExtra = {
   agentsCatalogUrl?: string;
 };
 
-/** Shape of each entry in docs/agents.json */
+/** Shape of each entry in .github/agents.json */
 interface CatalogEntry {
   id: string;
   name: string;
@@ -35,6 +36,7 @@ interface CatalogEntry {
   suggestedQuestions: string[];
   isCustom: boolean;
   isPremium: boolean;
+  minimumAIMode: AIMode;
 }
 
 interface CatalogFile {
@@ -75,6 +77,7 @@ function buildAgent(entry: CatalogEntry): Agent {
     suggestedQuestions: entry.suggestedQuestions,
     isCustom: entry.isCustom,
     isPremium: entry.isPremium,
+    minimumAIMode: entry.minimumAIMode,
   };
 }
 
@@ -90,6 +93,9 @@ const VALID_CATEGORIES = new Set([
  * If any of these appear in the expertise text the agent is rejected.
  * Checks are case-insensitive and ignore extra whitespace.
  */
+// Safety bypass patterns — detects both:
+// 1. Prompt injection attempts (ignore rules, act as DAN, etc.)
+// 2. Harmful agent purposes (illegal, violence, abuse, exploitation, etc.)
 const SAFETY_BYPASS_PATTERNS: RegExp[] = [
   /ignore\s+(the\s+)?(above|previous|prior|safety|rules|instructions)/i,
   /disregard\s+(the\s+)?(above|previous|prior|safety|rules|instructions)/i,
@@ -102,6 +108,14 @@ const SAFETY_BYPASS_PATTERNS: RegExp[] = [
   /do\s+not\s+(follow|apply|use|respect)\s+(the\s+)?(safety|rules|guidelines|restrictions)/i,
   /rules?\s+(above|below|listed)\s+(do\s+not|don'?t)\s+apply/i,
   /pretend\s+(there\s+are\s+no|you\s+have\s+no)\s+(rules?|restrictions?|guidelines?)/i,
+  // Harmful agent purposes detection
+  /how\s+to\s+(make|create|build|manufacture).*(bomb|explosive|weapon|drug|poison|hack)/i,
+  /illegal\s+(activity|drugs?|hacking|weapons?)/i,
+  /instructions?\s+for\s+(violence|torture|murder|killing|bombing)/i,
+  /pro-?ana|pro-?mia|thinspo|eating.?disorder.?tips/i,
+  /child\s+(exploitation|abuse|grooming|endangerment)/i,
+  /doxx|doxing|publish.?private.?information|revenge.?porn/i,
+  /extremist|radicalization|white.?supremacist|nazi|terrorism/i,
 ];
 
 export type AgentRejectionReason =
@@ -113,6 +127,8 @@ export type AgentRejectionReason =
   | 'expertise_too_short'
   | 'control_characters_detected'
   | 'safety_bypass_detected'
+  | 'adult_content_detected'
+  | 'harmful_purpose_detected'
   | 'duplicate_id';
 
 export interface AgentVerificationResult {
@@ -169,6 +185,8 @@ function verifyEntry(
     return { entry: null, reason: 'control_characters_detected', id, name };
   }
 
+  const minimumAIMode = o.minimumAIMode === 'cloud' ? 'cloud' : 'local';
+
   // 4. Valid category
   if (!VALID_CATEGORIES.has(o.category as string)) {
     return { entry: null, reason: 'invalid_category', id, name };
@@ -182,6 +200,11 @@ function verifyEntry(
   // 6. Safety bypass detection — most important check
   if (hasSafetyBypass(expertise)) {
     return { entry: null, reason: 'safety_bypass_detected', id, name };
+  }
+
+  // 7. Adult content check — strict enforcement
+  if (containsAdultContent(name) || containsAdultContent(expertise)) {
+    return { entry: null, reason: 'adult_content_detected', id, name };
   }
 
   seenIds.add(id);
@@ -199,6 +222,7 @@ function verifyEntry(
         .slice(0, 10),
       isCustom: o.isCustom === true,
       isPremium: o.isPremium === true,
+      minimumAIMode,
     },
     reason: null,
   };

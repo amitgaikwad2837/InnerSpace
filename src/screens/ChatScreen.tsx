@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,19 +18,25 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import { getAgentById, buildAgentSystemPrompt } from '../constants/agents';
-import { callGeminiAPI } from '../services/gemini-service';
-import { getAccessToken } from '../services/storage-service';
+import { AI_MODE_KEY } from '../constants/local-models';
+import { callAI } from '../services/gemini-service';
+import { checkSafety, containsAdultContent } from '../services/safety-filter';
+import { scheduleHelperReadyNotification } from '../services/notifications';
 import { useAuthStore } from '../store/auth';
 import { getDeviceLanguage } from '../i18n';
 import type { Message, Conversation } from '../types';
+import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 
 const CONVERSATIONS_KEY = '@innerspace:conversations';
 const TONE_KEY = '@innerspace:tone';
 const XP_KEY = '@innerspace:xp';
 const STREAK_KEY = '@innerspace:streak';
 const STREAK_DATE_KEY = '@innerspace:streak_last_date';
+
+function reactionsStorageKey(convId: string) {
+  return `@innerspace:reactions:${convId}`;
+}
 
 const TONE_PROMPTS: Record<string, string> = {
   warm: 'Warm, encouraging, and supportive. Use a friendly conversational tone.',
@@ -42,8 +48,40 @@ const TONE_PROMPTS: Record<string, string> = {
 const SAFETY_BG = '#3B1A1A';
 const SAFETY_BORDER = '#EF4444';
 
+/**
+ * Validate AI response for safety violations
+ * Returns original response or a safety redirect message if violations detected
+ */
+function validateResponse(response: string): { text: string; isSafetyRedirect: boolean; safetyCategory: string | null } {
+  // Check for adult content in response
+  if (containsAdultContent(response)) {
+    return {
+      text: 'InnerSpace is not designed for adult or explicit content. I cannot provide responses on this topic. Is there something else I can help you with?',
+      isSafetyRedirect: true,
+      safetyCategory: 'ADULT_CONTENT',
+    };
+  }
+
+  // Check for other safety violations
+  const safety = checkSafety(response);
+  if (!safety.isSafe) {
+    return {
+      text: safety.redirectMessage || 'I cannot help with that topic.',
+      isSafetyRedirect: true,
+      safetyCategory: safety.category,
+    };
+  }
+
+  return {
+    text: response,
+    isSafetyRedirect: false,
+    safetyCategory: null,
+  };
+}
+
 export default function ChatScreen() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const agentId: string = route.params?.agentId ?? 'chef';
@@ -55,12 +93,16 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [helperCooldownUntil, setHelperCooldownUntil] = useState<Date | null>(null);
+  const [cooldownNow, setCooldownNow] = useState(Date.now());
   const [tone, setTone] = useState('warm');
   const [reactions, setReactions] = useState<Record<string, 'up' | 'down'>>({});
   const conversationId = useRef(`conv_${Date.now()}`);
   const listRef = useRef<FlatList>(null);
 
   const language = getDeviceLanguage();
+
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const systemPrompt = agent
     ? buildAgentSystemPrompt(agent, TONE_PROMPTS[tone] ?? TONE_PROMPTS.warm, language)
@@ -70,7 +112,26 @@ export default function ChatScreen() {
     AsyncStorage.getItem(TONE_KEY).then((saved) => {
       if (saved) setTone(saved);
     });
+    // Load persisted reactions for this conversation
+    AsyncStorage.getItem(reactionsStorageKey(conversationId.current)).then((raw) => {
+      if (raw) {
+        try { setReactions(JSON.parse(raw)); } catch { /* ignore */ }
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (!helperCooldownUntil) return;
+
+    const tick = setInterval(() => {
+      setCooldownNow(Date.now());
+      if (Date.now() >= helperCooldownUntil.getTime()) {
+        setHelperCooldownUntil(null);
+      }
+    }, 30000);
+
+    return () => clearInterval(tick);
+  }, [helperCooldownUntil]);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
@@ -97,20 +158,19 @@ export default function ChatScreen() {
     }
   }
 
-  async function generateSummary(msgs: Message[], token: string) {
+  async function generateSummary(msgs: Message[]) {
     if (msgs.length < 4) return; // not worth summarising very short chats
     try {
       const transcript = msgs
         .filter((m) => !m.isSafetyRedirect)
         .map((m) => `${m.role === 'user' ? 'User' : 'Helper'}: ${m.content}`)
         .join('\n');
-      const result = await callGeminiAPI(
+      const result = await callAI(
         `Summarise this conversation in 2-3 concise bullet points (max 20 words each). Start each bullet with •.\n\n${transcript}`,
         'You are a concise summarisation assistant. Reply only with the bullet points, no preamble.',
         [],
-        token,
       );
-      if (!result.isSafetyRedirect && result.text) {
+      if (!result.error && !result.isSafetyRedirect && result.text) {
         await saveConversation(msgs, result.text);
       }
     } catch {
@@ -128,12 +188,14 @@ export default function ChatScreen() {
 
   function toggleReaction(msgId: string, reaction: 'up' | 'down') {
     setReactions((prev) => {
+      const next = { ...prev };
       if (prev[msgId] === reaction) {
-        const updated = { ...prev };
-        delete updated[msgId];
-        return updated;
+        delete next[msgId];
+      } else {
+        next[msgId] = reaction;
       }
-      return { ...prev, [msgId]: reaction };
+      AsyncStorage.setItem(reactionsStorageKey(conversationId.current), JSON.stringify(next)).catch(() => {});
+      return next;
     });
   }
 
@@ -156,9 +218,9 @@ export default function ChatScreen() {
       const streakRaw = await AsyncStorage.getItem(STREAK_KEY);
       const current = streakRaw ? parseInt(streakRaw, 10) : 0;
       const newStreak = lastDate === yesterday ? current + 1 : 1;
-      await AsyncStorage.multiSet([
-        [STREAK_KEY, String(newStreak)],
-        [STREAK_DATE_KEY, today],
+      await Promise.all([
+        AsyncStorage.setItem(STREAK_KEY, String(newStreak)),
+        AsyncStorage.setItem(STREAK_DATE_KEY, today),
       ]);
     } catch {
       // Non-critical
@@ -168,6 +230,16 @@ export default function ChatScreen() {
   async function handleSend(text?: string) {
     const userText = (text ?? input).trim();
     if (!userText || thinking) return;
+
+    const aiMode = await AsyncStorage.getItem(AI_MODE_KEY);
+    if (aiMode === 'local' && agent?.minimumAIMode === 'cloud') {
+      Alert.alert(
+        t('chat.cloud_only_title'),
+        t('chat.cloud_only_body'),
+      );
+      return;
+    }
+
     setInput('');
 
     const userMsg: Message = {
@@ -181,15 +253,13 @@ export default function ChatScreen() {
     setThinking(true);
 
     try {
-      // BYOK key takes priority; fall back to Google OAuth token
-      const byokKey = await SecureStore.getItemAsync('innerspace_api_key');
-      const oauthToken = await getAccessToken();
-      const token = byokKey || oauthToken || '';
-      if (!token) {
-        // Offline / no-token fallback: offer reflection prompts relevant to the agent
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
+      const result = await callAI(userText, systemPrompt, history);
+      if (result.error === 'no_key') {
+        // No key configured — offer reflection prompts relevant to the agent
         const fallbackPrompts = agent?.suggestedQuestions ?? [];
         const fallbackText = fallbackPrompts.length
-          ? `${t('chat.no_ai_tool_configured')}\n\nWhile you set up an AI provider, here are some questions to reflect on:\n\n${fallbackPrompts.map((q) => `• ${q}`).join('\n')}`
+          ? `${t('chat.no_ai_tool_configured')}\n\n${t('chat.reflection_prompts_intro')}\n\n${fallbackPrompts.map((q: string) => `• ${q}`).join('\n')}`
           : t('chat.no_ai_tool_configured');
         const setupMsg: Message = {
           id: (Date.now() + 1).toString(),
@@ -202,30 +272,49 @@ export default function ChatScreen() {
         await saveConversation(updatedMessages);
         return;
       }
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const result = await callGeminiAPI(userText, systemPrompt, history, token);
+
+      let assistantText = result.text;
+      if (result.error === 'quota_exceeded' && result.cooldownUntil) {
+        const nextReady = new Date(result.cooldownUntil);
+        const friendlyTime = nextReady.toLocaleString([], {
+          weekday: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        assistantText = `${t('chat.helper_resting_until', { time: friendlyTime })}\n\n${t('chat.helper_ready_note')}`;
+        setHelperCooldownUntil(nextReady);
+      }
+
+      // Validate AI response for safety violations
+      const validatedResponse = validateResponse(assistantText);
 
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: result.text,
+        content: validatedResponse.text,
         timestamp: new Date(),
-        isSafetyRedirect: result.isSafetyRedirect,
-        safetyCategory: result.safetyCategory,
+        isSafetyRedirect: validatedResponse.isSafetyRedirect || result.isSafetyRedirect,
+        safetyCategory: validatedResponse.safetyCategory || result.safetyCategory,
       };
       const updatedMessages = [...messages, userMsg, assistantMsg];
       setMessages(updatedMessages);
       await saveConversation(updatedMessages);
-      if (!result.isSafetyRedirect) {
+      if (result.error === 'quota_exceeded' && result.cooldownUntil) {
+        await scheduleHelperReadyNotification(
+          result.cooldownUntil,
+          t(agent.nameKey),
+          t('notifications.helper_ready_title'),
+          t('notifications.helper_ready_body', { helper: t(agent.nameKey) }),
+        );
+      }
+
+      if (!result.isSafetyRedirect && !result.error) {
         await addXp(5);
         await updateStreak();
         // Generate summary in background after 3+ AI replies
         const aiCount = updatedMessages.filter((m) => m.role === 'assistant' && !m.isSafetyRedirect).length;
         if (aiCount >= 3) {
-          const byokForSummary = await SecureStore.getItemAsync('innerspace_api_key');
-          const oauthForSummary = await getAccessToken();
-          const summaryToken = byokForSummary || oauthForSummary || '';
-          if (summaryToken) generateSummary(updatedMessages, summaryToken);
+          generateSummary(updatedMessages);
         }
       }
     } catch (err: any) {
@@ -312,17 +401,25 @@ export default function ChatScreen() {
     );
   }
 
+  const remainingMs = helperCooldownUntil ? Math.max(0, helperCooldownUntil.getTime() - cooldownNow) : 0;
+  const remainingMinutes = Math.ceil(remainingMs / 60000);
+
   return (
     <SafeAreaView style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.agentEmoji}>{agent.emoji}</Text>
-          <View>
-            <Text style={styles.agentName}>{t(agent.nameKey)}</Text>
+          <View style={styles.headerInfo}>
+            <View style={styles.headerNameRow}>
+              <Text style={styles.agentName}>{t(agent.nameKey)}</Text>
+              <Text style={[styles.headerBadge, agent.minimumAIMode === 'cloud' ? styles.headerBadgeCloud : styles.headerBadgeLocal]}>
+                {agent.minimumAIMode === 'cloud' ? t('helpers.badge_cloud') : t('helpers.badge_local')}
+              </Text>
+            </View>
             <Text style={styles.agentDesc} numberOfLines={1}>{t(agent.descriptionKey)}</Text>
           </View>
         </View>
@@ -334,6 +431,13 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
+        {helperCooldownUntil && remainingMinutes > 0 && (
+          <View style={styles.cooldownBanner}>
+            <Ionicons name="time-outline" size={14} color="#F59E0B" />
+            <Text style={styles.cooldownText}>{t('chat.cooldown_banner', { minutes: remainingMinutes })}</Text>
+          </View>
+        )}
+
         {/* Message list */}
         <FlatList
           ref={listRef}
@@ -345,7 +449,7 @@ export default function ChatScreen() {
           ListEmptyComponent={
             <View style={styles.suggestionsContainer}>
               <Text style={styles.suggestionsTitle}>{t('chat.tap_to_start')}</Text>
-              {agent.suggestedQuestions.map((q) => (
+              {agent.suggestedQuestions.map((q: string) => (
                 <TouchableOpacity
                   key={q}
                   style={styles.suggestionChip}
@@ -373,7 +477,7 @@ export default function ChatScreen() {
           <TextInput
             style={styles.textInput}
             placeholder={t('chat.placeholder')}
-            placeholderTextColor="#5A6478"
+            placeholderTextColor={colors.textDim}
             value={input}
             onChangeText={setInput}
             multiline
@@ -386,7 +490,7 @@ export default function ChatScreen() {
             disabled={!input.trim() || thinking}
             activeOpacity={0.8}
           >
-            <Ionicons name="send" size={18} color={input.trim() ? '#FFFFFF' : '#4A5568'} />
+            <Ionicons name="send" size={18} color={input.trim() ? colors.text : '#4A5568'} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -394,10 +498,11 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: typeof DARK_COLORS) {
+  return StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: c.background,
     paddingTop: RNStatusBar.currentHeight ?? 0,
   },
   header: {
@@ -407,181 +512,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
+    borderBottomColor: c.border,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  agentEmoji: {
-    fontSize: 28,
-  },
-  agentEmojiSmall: {
-    fontSize: 18,
-  },
-  agentName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  agentDesc: {
-    fontSize: 12,
-    color: '#8B9CC8',
-    maxWidth: 200,
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    flexGrow: 1,
-  },
-  msgWrapper: {
-    marginBottom: 6,
-  },
-  msgWrapperUser: {
-    alignItems: 'flex-end',
-  },
-  msgWrapperAssistant: {
-    alignItems: 'flex-start',
-  },
-  safetyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  safetyLabel: {
-    fontSize: 11,
-    color: '#EF4444',
-    fontWeight: '600',
-  },
-  bubble: {
-    maxWidth: '82%',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubbleUser: {
-    backgroundColor: '#1A3A6B',
-    borderBottomRightRadius: 4,
-  },
-  bubbleAssistant: {
-    backgroundColor: '#111827',
-    borderBottomLeftRadius: 4,
-  },
-  bubbleSafety: {
-    backgroundColor: SAFETY_BG,
-    borderWidth: 1,
-    borderColor: SAFETY_BORDER,
-  },
-  bubbleText: {
-    fontSize: 15,
-    color: '#CBD5E1',
-    lineHeight: 22,
-  },
-  bubbleTextUser: {
-    color: '#E8F0FE',
-  },
-  timestamp: {
-    fontSize: 10,
-    color: '#3A4560',
-    marginTop: 3,
-    marginHorizontal: 4,
-  },
-  msgFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '82%',
-    marginTop: 2,
-    paddingHorizontal: 2,
-  },
-  reactionRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  reactionBtn: {
-    padding: 4,
-    borderRadius: 10,
-  },
-  reactionBtnActive: {
-    backgroundColor: '#1A2340',
-  },
-  suggestionsContainer: {
-    flex: 1,
-    paddingTop: 40,
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  suggestionsTitle: {
-    fontSize: 13,
-    color: '#5A6478',
-    marginBottom: 8,
-  },
-  suggestionChip: {
-    backgroundColor: '#111827',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    alignSelf: 'stretch',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-  },
-  suggestionText: {
-    fontSize: 14,
-    color: '#8B9CC8',
-    textAlign: 'center',
-  },
-  thinkingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-  },
-  thinkingText: {
-    fontSize: 13,
-    color: '#4A9EFF',
-    marginLeft: 6,
-  },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#1F2937',
-    gap: 10,
-  },
-  textInput: {
-    flex: 1,
-    backgroundColor: '#111827',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    color: '#FFFFFF',
-    fontSize: 15,
-    maxHeight: 120,
-  },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#1A3A6B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendBtnDisabled: {
-    backgroundColor: '#111827',
-  },
-});
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
+  headerInfo: { alignItems: 'center' },
+  headerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  headerBadge: { fontSize: 9, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
+  headerBadgeCloud: { color: '#FBBF24', backgroundColor: '#3A2A0A' },
+  headerBadgeLocal: { color: '#34D399', backgroundColor: '#0D2F28' },
+  agentEmoji: { fontSize: 28 },
+  agentEmojiSmall: { fontSize: 18 },
+  agentName: { fontSize: 16, fontWeight: '700', color: c.text },
+  agentDesc: { fontSize: 12, color: c.textMuted, maxWidth: 200 },
+  listContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 8, flexGrow: 1 },
+  cooldownBanner: { marginHorizontal: 16, marginTop: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#7C4A03', backgroundColor: '#2A1A03', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cooldownText: { color: '#FCD34D', fontSize: 12, fontWeight: '600', flex: 1 },
+  msgWrapper: { marginBottom: 6 },
+  msgWrapperUser: { alignItems: 'flex-end' },
+  msgWrapperAssistant: { alignItems: 'flex-start' },
+  safetyBanner: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4, paddingHorizontal: 4 },
+  safetyLabel: { fontSize: 11, color: c.danger, fontWeight: '600' },
+  bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10 },
+  bubbleUser: { backgroundColor: c.accentBg, borderBottomRightRadius: 4 },
+  bubbleAssistant: { backgroundColor: c.surface, borderBottomLeftRadius: 4 },
+  bubbleSafety: { backgroundColor: SAFETY_BG, borderWidth: 1, borderColor: SAFETY_BORDER },
+  bubbleText: { fontSize: 15, color: c.textSecondary, lineHeight: 22 },
+  bubbleTextUser: { color: c.text },
+  timestamp: { fontSize: 10, color: c.textDim, marginTop: 3, marginHorizontal: 4 },
+  msgFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '82%', marginTop: 2, paddingHorizontal: 2 },
+  reactionRow: { flexDirection: 'row', gap: 6 },
+  reactionBtn: { padding: 4, borderRadius: 10 },
+  reactionBtnActive: { backgroundColor: c.surfaceAlt },
+  suggestionsContainer: { flex: 1, paddingTop: 40, alignItems: 'center', paddingHorizontal: 16, gap: 10 },
+  suggestionsTitle: { fontSize: 13, color: c.textDim, marginBottom: 8 },
+  suggestionChip: { backgroundColor: c.surface, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, alignSelf: 'stretch', borderWidth: 1, borderColor: c.border },
+  suggestionText: { fontSize: 14, color: c.textMuted, textAlign: 'center' },
+  thinkingRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 6 },
+  thinkingText: { fontSize: 13, color: c.accent, marginLeft: 6 },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border, gap: 10 },
+  textInput: { flex: 1, backgroundColor: c.surface, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: c.text, fontSize: 15, maxHeight: 120 },
+  sendBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.accentBg, alignItems: 'center', justifyContent: 'center' },
+  sendBtnDisabled: { backgroundColor: c.surface },
+  });
+}

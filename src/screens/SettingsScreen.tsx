@@ -11,18 +11,25 @@ import {
   StatusBar as RNStatusBar,
   Switch,
   Linking,
+  Share,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { useAuthStore } from '../store/auth';
 import { clearStorage } from '../services/storage-service';
+import { exportBackupAndShare, importBackupFromFile } from '../services/backup-service';
 import i18n, { SUPPORTED_LANGUAGES, type LanguageCode } from '../i18n';
-import type { ToneOption } from '../types';
+import type { ToneOption, AIMode, LocalModel } from '../types';
+import {
+  LOCAL_MODELS,
+  AI_MODE_KEY,
+  LOCAL_MODEL_KEY,
+  USER_PROFILE_KEY,
+  getAgeGroup,
+} from '../constants/local-models';
 import {
   canUseBiometric,
   clearAppPin,
@@ -35,16 +42,30 @@ import {
   type AppLockMode,
 } from '../services/app-lock';
 import { LEGAL_ACK_KEY, getEffectiveLegalNoticeText } from '../constants/legal-notice';
+import Constants from 'expo-constants';
 import { useTheme } from '../context/ThemeContext';
+import {
+  downloadLocalModel,
+  getLocalModelDownloadStatus,
+  type LocalModelDownloadStatus,
+} from '../services/local-llm-service';
 
 const TONE_KEY = '@innerspace:tone';
 const LANG_KEY = '@innerspace:language';
 const API_KEY_STORE = 'innerspace_api_key';
+const AI_PROVIDER_KEY = '@innerspace:ai_provider';
+type AIProvider = 'gemini' | 'openai' | 'claude' | 'groq';
 const ONBOARDING_DONE_KEY = '@innerspace:onboarding_done';
 const CREDIT_NAME = 'Amit';
 const CREDIT_ROLE = 'Creator, Product & Engineering';
 const CREDIT_WEBSITE = 'https://github.com/';
 const CREDIT_LINKEDIN = 'https://www.linkedin.com/';
+const APP_WEBSITE_URL = 'https://github.com/amitgaikwad2837/InnerSpace';
+
+type ExpoExtra = {
+  rateAppUrl?: string;
+  shareAppUrl?: string;
+};
 
 const TONES: { key: ToneOption; labelKey: string; desc: string }[] = [
   {
@@ -72,6 +93,7 @@ export default function SettingsScreen() {
 
   const [tone, setTone] = useState<ToneOption>('warm');
   const [language, setLanguage] = useState<LanguageCode>('en');
+  const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [useCustomKey, setUseCustomKey] = useState(false);
@@ -82,21 +104,52 @@ export default function SettingsScreen() {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [hasPin, setHasPin] = useState(false);
+  // Profile
+  const [profileName, setProfileName] = useState('');
+  const [profileAge, setProfileAge] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  // AI Mode
+  const [aiMode, setAiMode] = useState<AIMode>('cloud');
+  const [localModelId, setLocalModelId] = useState<LocalModel>('llama321b');
+  const [localStatuses, setLocalStatuses] = useState<Record<string, LocalModelDownloadStatus>>({});
+  const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
 
   // Load saved prefs
   useEffect(() => {
     async function load() {
-      const [savedTone, savedLang, savedKey] = await Promise.all([
+      const [savedTone, savedLang, savedKey, savedProvider] = await Promise.all([
         AsyncStorage.getItem(TONE_KEY),
         AsyncStorage.getItem(LANG_KEY),
         SecureStore.getItemAsync(API_KEY_STORE),
+        AsyncStorage.getItem(AI_PROVIDER_KEY),
       ]);
       if (savedTone) setTone(savedTone as ToneOption);
       if (savedLang) setLanguage(savedLang as LanguageCode);
+      if (savedProvider) setAiProvider(savedProvider as AIProvider);
       if (savedKey) {
         setApiKey(savedKey);
         setUseCustomKey(true);
       }
+
+      const [profileRaw, savedMode, savedModelId] = await Promise.all([
+        AsyncStorage.getItem(USER_PROFILE_KEY),
+        AsyncStorage.getItem(AI_MODE_KEY),
+        AsyncStorage.getItem(LOCAL_MODEL_KEY),
+      ]);
+      if (profileRaw) {
+        try {
+          const p = JSON.parse(profileRaw);
+          if (p.name) setProfileName(p.name);
+          if (p.age != null) setProfileAge(String(p.age));
+        } catch { /* ignore */ }
+      }
+      if (savedMode) setAiMode(savedMode as AIMode);
+      if (savedModelId) setLocalModelId(savedModelId as LocalModel);
+
+      const statuses = await Promise.all(
+        LOCAL_MODELS.map(async (model) => [model.id, await getLocalModelDownloadStatus(model.id)] as const),
+      );
+      setLocalStatuses(Object.fromEntries(statuses));
 
       const [enabled, mode, bioAvailable, pinExists] = await Promise.all([
         getLockEnabled(),
@@ -179,9 +232,89 @@ export default function SettingsScreen() {
     i18n.changeLanguage(lang);
   }
 
+  async function handleSaveProfile() {
+    setSavingProfile(true);
+    try {
+      const ageNum = parseInt(profileAge, 10);
+      const validAge = !Number.isNaN(ageNum) && ageNum >= 13 && ageNum <= 120 ? ageNum : null;
+      const ageGroup = getAgeGroup(validAge);
+      const profile = { name: profileName.trim(), age: validAge, ageGroup };
+      await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+      Alert.alert(t('general.done'), t('settings.profile_saved'));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function refreshLocalStatuses() {
+    const statuses = await Promise.all(
+      LOCAL_MODELS.map(async (model) => [model.id, await getLocalModelDownloadStatus(model.id)] as const),
+    );
+    setLocalStatuses(Object.fromEntries(statuses));
+  }
+
+  async function handleDownloadSelectedLocalModel() {
+    try {
+      setDownloadingModelId(localModelId);
+      setLocalStatuses((prev) => ({
+        ...prev,
+        [localModelId]: {
+          downloaded: false,
+          downloading: true,
+          progress: 0,
+          supported: prev[localModelId]?.supported ?? true,
+          available: prev[localModelId]?.available ?? true,
+        },
+      }));
+      await downloadLocalModel(localModelId, (progress) => {
+        setLocalStatuses((prev) => ({
+          ...prev,
+          [localModelId]: {
+            downloaded: false,
+            downloading: true,
+            progress,
+            supported: prev[localModelId]?.supported ?? true,
+            available: prev[localModelId]?.available ?? true,
+          },
+        }));
+      });
+      await refreshLocalStatuses();
+    } catch (error: any) {
+      Alert.alert(
+        t('settings.download_failed_title', { defaultValue: 'Download failed' }),
+        String(error?.message ?? error),
+      );
+      await refreshLocalStatuses();
+    } finally {
+      setDownloadingModelId(null);
+    }
+  }
+
+  async function handleSaveAiMode() {
+    if (aiMode === 'local') {
+      const status = await getLocalModelDownloadStatus(localModelId);
+      if (!status.downloaded) {
+        Alert.alert(
+          t('settings.download_model_alert_title', { defaultValue: 'Download model first' }),
+          t('settings.download_model_alert_body', { defaultValue: 'Please download the selected on-device model before switching to local AI mode.' }),
+        );
+        return;
+      }
+    }
+
+    await Promise.all([
+      AsyncStorage.setItem(AI_MODE_KEY, aiMode),
+      aiMode === 'local'
+        ? AsyncStorage.setItem(LOCAL_MODEL_KEY, localModelId)
+        : AsyncStorage.setItem(AI_PROVIDER_KEY, aiProvider),
+    ]);
+    Alert.alert(t('general.done'), t('settings.ai_mode_saved'));
+  }
+
   async function saveApiKey() {
     setSaving(true);
     try {
+      await AsyncStorage.setItem(AI_PROVIDER_KEY, aiProvider);
       if (useCustomKey && apiKey.trim()) {
         await SecureStore.setItemAsync(API_KEY_STORE, apiKey.trim());
         Alert.alert('Saved', t('settings.api_key_saved'));
@@ -196,19 +329,29 @@ export default function SettingsScreen() {
 
   async function handleExport() {
     try {
-      const keys = await AsyncStorage.getAllKeys();
-      const pairs = await AsyncStorage.multiGet(keys);
-      const data = Object.fromEntries(pairs.map(([k, v]) => [k, v ?? '']));
-      const json = JSON.stringify(data, null, 2);
-      const path = FileSystem.documentDirectory + 'innerspace_export.json';
-      await FileSystem.writeAsStringAsync(path, json);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(path, { mimeType: 'application/json' });
-      } else {
-        Alert.alert(t('settings.exported_title'), t('settings.exported_path', { path }));
+      const result = await exportBackupAndShare();
+      if (!result.shared) {
+        Alert.alert(t('settings.exported_title'), t('settings.exported_path', { path: result.path }));
       }
     } catch {
       Alert.alert(t('general.error'), t('settings.export_failed'));
+    }
+  }
+
+  async function handleImportBackup() {
+    try {
+      const result = await importBackupFromFile();
+      if (result.cancelled) return;
+      Alert.alert(
+        t('settings.import_complete_title'),
+        t('settings.import_complete_body', { count: result.restoredKeys }),
+        [
+          { text: t('settings.import_later'), style: 'cancel' },
+          { text: t('settings.import_run_setup_now'), onPress: handleRerunSetup },
+        ],
+      );
+    } catch {
+      Alert.alert(t('settings.import_failed_title'), t('settings.import_failed_body'));
     }
   }
 
@@ -246,11 +389,38 @@ export default function SettingsScreen() {
   }
 
   async function handleReAcceptLegal() {
-    await AsyncStorage.multiSet([
-      [ONBOARDING_DONE_KEY, 'false'],
-      [LEGAL_ACK_KEY, ''],
+    await Promise.all([
+      AsyncStorage.setItem(ONBOARDING_DONE_KEY, 'false'),
+      AsyncStorage.setItem(LEGAL_ACK_KEY, ''),
     ]);
     navigation.navigate('SetupFlow');
+  }
+
+  async function handleRateApp() {
+    try {
+      const extra = (Constants.expoConfig?.extra ?? {}) as ExpoExtra;
+      const rateUrl = extra.rateAppUrl || extra.shareAppUrl || APP_WEBSITE_URL;
+      const supported = await Linking.canOpenURL(rateUrl);
+      if (!supported) {
+        Alert.alert('Rate InnerSpace', `Please rate us here: ${rateUrl}`);
+        return;
+      }
+      await Linking.openURL(rateUrl);
+    } catch {
+      Alert.alert('Rate InnerSpace', 'Unable to open the rating page right now.');
+    }
+  }
+
+  async function handleShareApp() {
+    try {
+      const extra = (Constants.expoConfig?.extra ?? {}) as ExpoExtra;
+      const shareUrl = extra.shareAppUrl || APP_WEBSITE_URL;
+      await Share.share({
+        message: `I am using InnerSpace for habits, reflection, and AI support. Try it here: ${shareUrl}`,
+      });
+    } catch {
+      Alert.alert('Share InnerSpace', 'Unable to open the share sheet right now.');
+    }
   }
 
   return (
@@ -269,6 +439,35 @@ export default function SettingsScreen() {
             </View>
             <Text style={styles.emailText}>{email || t('settings.guest_mode')}</Text>
           </View>
+        </Section>
+        <Section title={t('settings.profile_info')}>
+          <Text style={styles.fieldLabel}>{t('settings.profile_name_label')}</Text>
+          <TextInput
+            style={styles.fieldInput}
+            placeholder={t('settings.profile_name_placeholder')}
+            placeholderTextColor="#5A6478"
+            value={profileName}
+            onChangeText={setProfileName}
+            maxLength={40}
+            autoCapitalize="words"
+          />
+          <Text style={[styles.fieldLabel, { marginTop: 12 }]}>{t('settings.profile_age_label')}</Text>
+          <TextInput
+            style={styles.fieldInput}
+            placeholder={t('settings.profile_age_placeholder')}
+            placeholderTextColor="#5A6478"
+            value={profileAge}
+            onChangeText={(v) => setProfileAge(v.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            maxLength={3}
+          />
+          <TouchableOpacity
+            style={[styles.saveKeyBtn, { alignSelf: 'flex-start', marginTop: 12 }, savingProfile && { opacity: 0.6 }]}
+            onPress={handleSaveProfile}
+            disabled={savingProfile}
+          >
+            <Text style={styles.saveKeyText}>{t('settings.save_profile')}</Text>
+          </TouchableOpacity>
         </Section>
 
         <Section title="Appearance">
@@ -328,51 +527,167 @@ export default function SettingsScreen() {
 
         {/* AI Provider / BYOK */}
         <Section title={t('settings.ai_provider')}>
-          <View style={styles.geminiStatusRow}>
-            <Text style={styles.geminiStatusIcon}>✅</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.toggleLabel}>{t('settings.guest_mode_active')}</Text>
-              <Text style={styles.toggleDesc}>
-                  {t('settings.guest_mode_desc')}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-                <Text style={styles.toggleLabel}>{t('settings.override_custom_key')}</Text>
-                <Text style={styles.toggleDesc}>{t('settings.override_custom_key_desc')}</Text>
-            </View>
-            <Switch
-              value={useCustomKey}
-              onValueChange={setUseCustomKey}
-              trackColor={{ false: '#1F2937', true: '#1A3A6B' }}
-              thumbColor={useCustomKey ? '#4A9EFF' : '#5A6478'}
-            />
-          </View>
-          {useCustomKey && (
-            <View style={styles.apiKeyRow}>
-              <TextInput
-                style={styles.apiKeyInput}
-                placeholder={t('settings.api_key_placeholder')}
-                placeholderTextColor="#5A6478"
-                value={apiKey}
-                onChangeText={setApiKey}
-                secureTextEntry={!showApiKey}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity onPress={() => setShowApiKey((v) => !v)} style={styles.eyeBtn}>
-                <Ionicons name={showApiKey ? 'eye-off' : 'eye'} size={20} color="#8B9CC8" />
-              </TouchableOpacity>
+          {/* AI Mode toggle — local vs cloud */}
+          <Text style={styles.providerLabel}>{t('settings.ai_mode_label')}</Text>
+          <View style={styles.providerChipRow}>
+            {(['local', 'cloud'] as AIMode[]).map((m) => (
               <TouchableOpacity
-                style={[styles.saveKeyBtn, saving && { opacity: 0.6 }]}
-                onPress={saveApiKey}
-                disabled={saving}
+                key={m}
+                style={[styles.providerChip, aiMode === m && styles.providerChipActive]}
+                onPress={() => setAiMode(m)}
+                activeOpacity={0.8}
               >
-                <Text style={styles.saveKeyText}>{t('general.save')}</Text>
+                <Text style={[styles.providerChipText, aiMode === m && styles.providerChipTextActive]}>
+                  {m === 'local' ? `📱 ${t('settings.ai_mode_local')}` : `☁️ ${t('settings.ai_mode_cloud')}`}
+                </Text>
               </TouchableOpacity>
-            </View>
+            ))}
+          </View>
+
+          {aiMode === 'local' && (
+            <>
+              <Text style={styles.providerLabel}>{t('settings.local_model_label')}</Text>
+              {LOCAL_MODELS.map((model) => (
+                <TouchableOpacity
+                  key={model.id}
+                  style={[
+                    styles.toneRow,
+                    localModelId === model.id && styles.toneRowActive,
+                    !model.supported && { opacity: 0.45 },
+                  ]}
+                  onPress={() => {
+                    if (!model.supported) return;
+                    setLocalModelId(model.id);
+                  }}
+                  activeOpacity={0.85}
+                  disabled={!model.supported}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.toneLabel, localModelId === model.id && styles.toneLabelActive]}>
+                      {model.label}
+                    </Text>
+                    <Text style={styles.toneDesc}>
+                      {model.description} {model.supported ? `· ${model.sizeGB} GB` : '· Coming soon'}
+                    </Text>
+                  </View>
+                  {model.supported && localModelId === model.id && <Ionicons name="checkmark-circle" size={20} color="#4A9EFF" />}
+                </TouchableOpacity>
+              ))}
+              {localStatuses[localModelId]?.supported && (
+                <View style={styles.localDownloadCard}>
+                  <Text style={styles.localDownloadTitle}>
+                    {localStatuses[localModelId]?.downloaded
+                      ? t('settings.model_downloaded', { defaultValue: 'Model downloaded and ready' })
+                      : localStatuses[localModelId]?.downloading
+                        ? t('settings.model_downloading', { defaultValue: 'Downloading model...' })
+                        : t('settings.model_not_downloaded', { defaultValue: 'Model not downloaded yet' })}
+                  </Text>
+                  <Text style={styles.localDownloadHint}>
+                    {localStatuses[localModelId]?.downloaded
+                      ? t('settings.model_ready_hint', { defaultValue: 'You can switch to local mode immediately.' })
+                      : t('settings.model_download_hint', { defaultValue: 'Download the selected model now so local chats work immediately.' })}
+                  </Text>
+                  {!localStatuses[localModelId]?.downloaded && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.saveKeyBtn, { alignSelf: 'flex-start', marginTop: 10 }, downloadingModelId === localModelId && { opacity: 0.65 }]}
+                        onPress={handleDownloadSelectedLocalModel}
+                        disabled={downloadingModelId === localModelId}
+                      >
+                        <Text style={styles.saveKeyText}>
+                          {downloadingModelId === localModelId
+                            ? t('settings.downloading_model', { defaultValue: 'Downloading...' })
+                            : t('settings.download_model', { defaultValue: 'Download model now' })}
+                        </Text>
+                      </TouchableOpacity>
+                      {(localStatuses[localModelId]?.downloading || downloadingModelId === localModelId) && (
+                        <>
+                          <View style={styles.localProgressTrack}>
+                            <View
+                              style={[
+                                styles.localProgressFill,
+                                { width: `${Math.round((localStatuses[localModelId]?.progress ?? 0) * 100)}%` },
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.localProgressText}>{Math.round((localStatuses[localModelId]?.progress ?? 0) * 100)}%</Text>
+                        </>
+                      )}
+                    </>
+                  )}
+                </View>
+              )}
+            </>
           )}
+
+          {aiMode === 'cloud' && (
+            <>
+              <View style={styles.geminiStatusRow}>
+                <Text style={styles.geminiStatusIcon}>✅</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.toggleLabel}>{t('settings.guest_mode_active')}</Text>
+                  <Text style={styles.toggleDesc}>{t('settings.guest_mode_desc')}</Text>
+                </View>
+              </View>
+              <Text style={styles.providerLabel}>{t('settings.ai_provider_label')}</Text>
+              <View style={styles.providerChipRow}>
+                {(['gemini', 'openai', 'claude', 'groq'] as AIProvider[]).map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.providerChip, aiProvider === p && styles.providerChipActive]}
+                    onPress={() => setAiProvider(p)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.providerChipText, aiProvider === p && styles.providerChipTextActive]}>
+                      {t(`settings.provider_${p}`)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.toggleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.toggleLabel}>{t('settings.override_custom_key')}</Text>
+                  <Text style={styles.toggleDesc}>{t('settings.override_custom_key_desc')}</Text>
+                </View>
+                <Switch
+                  value={useCustomKey}
+                  onValueChange={setUseCustomKey}
+                  trackColor={{ false: '#1F2937', true: '#1A3A6B' }}
+                  thumbColor={useCustomKey ? '#4A9EFF' : '#5A6478'}
+                />
+              </View>
+              {useCustomKey && (
+                <View style={styles.apiKeyRow}>
+                  <TextInput
+                    style={styles.apiKeyInput}
+                    placeholder={t(`settings.api_key_placeholder_${aiProvider}`)}
+                    placeholderTextColor="#5A6478"
+                    value={apiKey}
+                    onChangeText={setApiKey}
+                    secureTextEntry={!showApiKey}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity onPress={() => setShowApiKey((v) => !v)} style={styles.eyeBtn}>
+                    <Ionicons name={showApiKey ? 'eye-off' : 'eye'} size={20} color="#8B9CC8" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.saveKeyBtn, saving && { opacity: 0.6 }]}
+                    onPress={saveApiKey}
+                    disabled={saving}
+                  >
+                    <Text style={styles.saveKeyText}>{t('general.save')}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
+          <TouchableOpacity
+            style={[styles.saveKeyBtn, { alignSelf: 'flex-start', marginTop: 10 }]}
+            onPress={handleSaveAiMode}
+          >
+            <Text style={styles.saveKeyText}>{t('settings.save_ai_mode')}</Text>
+          </TouchableOpacity>
         </Section>
 
         {/* App Lock */}
@@ -454,12 +769,18 @@ export default function SettingsScreen() {
         <Section title={t('settings.data')}>
           <RowBtn icon="options-outline" label={t('settings.rerun_setup')} onPress={handleRerunSetup} />
           <RowBtn icon="download-outline" label={t('settings.export')} onPress={handleExport} />
+          <RowBtn icon="cloud-upload-outline" label={t('settings.import_backup')} onPress={handleImportBackup} />
           <RowBtn icon="trash-outline" label={t('settings.delete_account')} onPress={handleDeleteAll} destructive />
         </Section>
 
         <Section title={t('settings.legal_privacy')}>
           <RowBtn icon="document-text-outline" label={t('settings.view_legal_notice')} onPress={handleViewLegalNotice} />
           <RowBtn icon="refresh-outline" label={t('settings.review_accept_notice_again')} onPress={handleReAcceptLegal} />
+        </Section>
+
+        <Section title="Support">
+          <RowBtn icon="star-outline" label="Rate InnerSpace" onPress={handleRateApp} />
+          <RowBtn icon="share-social-outline" label="Share InnerSpace" onPress={handleShareApp} />
         </Section>
 
         <View style={styles.creditsWrap}>
@@ -635,6 +956,25 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1A2340',
   },
   geminiStatusIcon: { fontSize: 20, marginTop: 2 },
+  // GAP-10: provider chips
+  providerLabel: { fontSize: 12, fontWeight: '600', color: '#5A6478', textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 14, paddingBottom: 6 },
+  providerChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, paddingBottom: 10 },
+  providerChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#1A2340', borderWidth: 1, borderColor: '#2A3555' },
+  fieldLabel: { color: '#8B9CC8', fontSize: 13, marginBottom: 6, paddingHorizontal: 14 },
+  fieldInput: {
+    backgroundColor: '#0A0F1E',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    color: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+    marginHorizontal: 14,
+  },
+  providerChipActive: { backgroundColor: '#1A3A6B', borderColor: '#4A9EFF' },
+  providerChipText: { fontSize: 13, color: '#8B9CC8', fontWeight: '500' },
+  providerChipTextActive: { color: '#4A9EFF', fontWeight: '700' },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -680,6 +1020,43 @@ const styles = StyleSheet.create({
     color: '#4A9EFF',
     fontWeight: '600',
     fontSize: 14,
+  },
+  localDownloadCard: {
+    marginHorizontal: 14,
+    marginTop: 6,
+    marginBottom: 10,
+    backgroundColor: '#0A0F1E',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    padding: 12,
+  },
+  localDownloadTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  localDownloadHint: {
+    color: '#8B9CC8',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  localProgressTrack: {
+    marginTop: 10,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#1A2340',
+    overflow: 'hidden',
+  },
+  localProgressFill: {
+    height: '100%',
+    backgroundColor: '#4A9EFF',
+  },
+  localProgressText: {
+    color: '#8B9CC8',
+    fontSize: 12,
+    marginTop: 6,
   },
   modeRow: {
     flexDirection: 'row',

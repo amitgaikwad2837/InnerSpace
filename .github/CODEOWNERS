@@ -1,0 +1,42 @@
+# InnerSpace CODEOWNERS
+# This file defines code ownership and review requirements
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# OWNER-ONLY FILES — Only @amitgaikwad2837 can modify
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# GitHub Configuration & CI/CD
+.github/ @amitgaikwad2837
+
+# Package Management & Dependencies
+package.json @amitgaikwad2837
+package-lock.json @amitgaikwad2837
+tsconfig.json @amitgaikwad2837
+.eslintrc.js @amitgaikwad2837
+
+# App Configuration
+app.json @amitgaikwad2837
+app.config.js @amitgaikwad2837
+eas.json @amitgaikwad2837
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SECURITY-CRITICAL FILES — Code owner review required
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Safety & Validation
+src/services/safety-filter.ts @amitgaikwad2837
+src/services/agents-catalog.ts @amitgaikwad2837
+src/services/app-lock.ts @amitgaikwad2837
+
+# Constants & Definitions
+src/constants/agents.ts @amitgaikwad2837
+src/constants/legal-notice.ts @amitgaikwad2837
+
+# Agents Marketplace (stored in .github/)
+.github/agents.json @amitgaikwad2837
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ALL OTHER CODE — Require owner approval (fallback)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+* @amitgaikwad2837

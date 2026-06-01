@@ -2,7 +2,7 @@ import * as Localization from 'expo-localization';
 import Constants from 'expo-constants';
 
 export const LEGAL_ACK_KEY = '@innerspace:legal_ack_version';
-export const LEGAL_ACK_VERSION = '2026-06-01';
+export const LEGAL_ACK_VERSION = '2026-07-01';
 
 const EU_EEA_CODES = [
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
@@ -52,8 +52,13 @@ const GLOBAL_BULLETS = [
   'Do not rely on this app for emergencies, diagnosis, urgent legal decisions, or urgent financial decisions.',
   'If you are in danger or crisis, contact local emergency services or a local crisis hotline immediately.',
   'You are responsible for reviewing and validating AI-generated responses before acting on them.',
-  'Your data is stored on your device. If you connect an AI provider, your prompts may be processed by that provider under its terms.',
-  'Some regions require parental consent and special protections for minors; this app is intended for adults 18+.',
+  'Your data — including your name, age, habits, journal entries, and chat history — is stored locally on your device only. Nothing is uploaded to InnerSpace servers.',
+  'If you enter your name, it is used only to personalise greetings and AI responses. It never leaves your device.',
+  'If you enter your age, an age group (e.g. teen, adult) is derived and used to adjust the tone and vocabulary of AI responses. Your exact age and age group are stored locally only.',
+  'If you choose the "Basic" (on-device) AI mode, AI model files are downloaded and stored on your device. These files are large (0.8 GB – 2.4 GB). You may delete them at any time by uninstalling the app or clearing app data.',
+  'If you choose the "Advanced" (cloud) AI mode and enter a third-party API key, your chat messages and prompts are sent to that provider (e.g. Google, OpenAI, Anthropic, Groq) under their respective terms and privacy policies.',
+  'This app is intended for users aged 13 and over. If you are under 18, please use this app with parental guidance. Users under 13 must not use this app.',
+  'Some regions require parental consent for minors. Check local laws if you are setting up this app for a minor.',
 ];
 
 const REGION_RULES: Record<LegalRegion, string[]> = {
@@ -107,7 +112,7 @@ export function getLegalNotice(): LegalNotice {
     regionLabel: REGION_LABEL[region],
     title: 'Legal and Privacy Notice',
     summary:
-      'Please review and accept this notice before using InnerSpace. This app is guidance-only and is not a substitute for professional services.',
+      'Please review and accept this notice before using InnerSpace. This app stores your data (name, age, habits, journals, chats) locally on your device. It supports optional on-device AI models and optional cloud AI providers. This app is guidance-only and is not a substitute for professional services.',
     bullets: [...GLOBAL_BULLETS, ...REGION_RULES[region]],
   };
 }

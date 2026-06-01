@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   StatusBar as RNStatusBar,
   Modal,
   Linking,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,14 +17,25 @@ import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/auth';
 import { getCatalogAgents } from '../services/agents-catalog';
-import type { Agent } from '../types';
+import { AI_MODE_KEY } from '../constants/local-models';
+import type { Agent, Habit, JournalEntry, Conversation } from '../types';
 import InnerSpaceLogo from '../components/InnerSpaceLogo';
+import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 
 const STREAK_KEY = '@innerspace:streak';
 const XP_KEY = '@innerspace:xp';
 const SELECTED_HELPERS_KEY = '@innerspace:selected_helpers';
-const XP_STORE_KEY = '@innerspace:xp';
 const CHECKIN_KEY = '@innerspace:checkin_today';
+const CONVERSATIONS_KEY = '@innerspace:conversations';
+const HABITS_KEY = '@innerspace:habits';
+const JOURNAL_KEY = '@innerspace:journal_entries';
+
+const MILESTONES = [
+  { days: 7, emoji: '🥉', label: '7-day streak' },
+  { days: 30, emoji: '🥈', label: '30-day streak' },
+  { days: 60, emoji: '🥇', label: '60-day streak' },
+  { days: 100, emoji: '🏆', label: '100-day streak' },
+] as const;
 
 const CHECKIN_PROMPTS = [
   'What\'s one thing you\'re grateful for right now?',
@@ -62,8 +74,24 @@ function getGreetingKey(): 'home.greeting_morning' | 'home.greeting_afternoon' |
   return 'home.greeting_evening';
 }
 
+function dayKey(value: Date | string | undefined): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function lastNDays(n: number): string[] {
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    out.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 export default function HomeScreen() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const navigation = useNavigation<any>();
   const { email } = useAuthStore();
   const firstName = email?.split('@')[0]?.split('.')[0] ?? 'there';
@@ -76,21 +104,28 @@ export default function HomeScreen() {
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([]);
   const [featuredHelperId, setFeaturedHelperId] = useState<string | null>(null);
   const [allAgents, setAllAgents] = useState<Agent[]>([]);
+  const [activityByDay, setActivityByDay] = useState<Record<string, number>>({});
 
-  // Daily check-in
   const [checkinDone, setCheckinDone] = useState(false);
   const [checkinMood, setCheckinMood] = useState<Mood | null>(null);
   const checkinPrompt = getDailyPrompt();
 
   useEffect(() => {
     async function loadProgressAndPreferences() {
-      const [catalog, s, x, selectedRaw] = await Promise.all([
+      const [catalog, aiMode, s, x, selectedRaw, conversationsRaw, habitsRaw, journalRaw] = await Promise.all([
         getCatalogAgents(),
+        AsyncStorage.getItem(AI_MODE_KEY),
         AsyncStorage.getItem(STREAK_KEY),
         AsyncStorage.getItem(XP_KEY),
         AsyncStorage.getItem(SELECTED_HELPERS_KEY),
+        AsyncStorage.getItem(CONVERSATIONS_KEY),
+        AsyncStorage.getItem(HABITS_KEY),
+        AsyncStorage.getItem(JOURNAL_KEY),
       ]);
-      setAllAgents(catalog);
+      const visibleCatalog = aiMode === 'local'
+        ? catalog.filter((agent) => agent.minimumAIMode !== 'cloud')
+        : catalog;
+      setAllAgents(visibleCatalog);
       if (s) setStreak(parseInt(s, 10));
       if (x) setXp(parseInt(x, 10));
 
@@ -110,9 +145,43 @@ export default function HomeScreen() {
       const checkin = await AsyncStorage.getItem(CHECKIN_KEY);
       if (checkin === getTodayKey()) setCheckinDone(true);
 
+      // Build 28-day activity map from chat, journal, habits and check-ins
+      const counts: Record<string, number> = {};
+      const addCount = (k: string | null) => {
+        if (!k) return;
+        counts[k] = (counts[k] ?? 0) + 1;
+      };
+
+      if (conversationsRaw) {
+        try {
+          const convos: Conversation[] = JSON.parse(conversationsRaw);
+          convos.forEach((c) => addCount(dayKey(c.createdAt)));
+        } catch {
+          // ignore malformed history
+        }
+      }
+      if (journalRaw) {
+        try {
+          const journals: JournalEntry[] = JSON.parse(journalRaw);
+          journals.forEach((j) => addCount(dayKey(j.entryDate)));
+        } catch {
+          // ignore malformed entries
+        }
+      }
+      if (habitsRaw) {
+        try {
+          const habits: Habit[] = JSON.parse(habitsRaw);
+          habits.forEach((h) => addCount(dayKey(h.lastCompletedAt)));
+        } catch {
+          // ignore malformed habits
+        }
+      }
+      if (checkin) addCount(checkin);
+      setActivityByDay(counts);
+
       const pool = selected.length
-        ? catalog.filter((agent) => selected.includes(agent.id))
-        : catalog;
+        ? visibleCatalog.filter((agent) => selected.includes(agent.id))
+        : visibleCatalog;
       if (pool.length) {
         const picked = pool[Math.floor(Math.random() * pool.length)];
         setFeaturedHelperId(picked.id);
@@ -121,15 +190,33 @@ export default function HomeScreen() {
     loadProgressAndPreferences();
   }, []);
 
+  const unlockedMilestones = MILESTONES.filter((m) => streak >= m.days);
+
+  async function handleShareAchievement() {
+    try {
+      const top = unlockedMilestones[unlockedMilestones.length - 1];
+      const badgeText = top ? `${top.emoji} ${top.label}` : `🔥 ${streak}-day streak`;
+      await Share.share({
+        message: `I just hit a milestone on InnerSpace: ${badgeText}. Small consistent steps really add up.`,
+      });
+    } catch {
+      // User may cancel share sheet
+    }
+  }
+
+  const heatmapDays = lastNDays(28);
+
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   async function handleCheckinDone(mood: Mood) {
     setCheckinMood(mood);
     setCheckinDone(true);
     await AsyncStorage.setItem(CHECKIN_KEY, getTodayKey());
     // Award +5 XP
-    const raw = await AsyncStorage.getItem(XP_STORE_KEY);
+    const raw = await AsyncStorage.getItem(XP_KEY);
     const current = raw ? parseInt(raw, 10) : 0;
     const next = current + 5;
-    await AsyncStorage.setItem(XP_STORE_KEY, String(next));
+    await AsyncStorage.setItem(XP_KEY, String(next));
     setXp(next);
   }
 
@@ -153,7 +240,7 @@ export default function HomeScreen() {
       icon: '✅',
       title: t('home.mode_habits_title'),
       desc: t('home.mode_habits_desc'),
-      onPress: () => navigation.navigate('History'),
+      onPress: () => navigation.navigate('Habits'),
       color: '#1A3A2A',
     },
     {
@@ -167,7 +254,7 @@ export default function HomeScreen() {
       icon: '🎯',
       title: t('home.mode_decide_title'),
       desc: t('home.mode_decide_desc'),
-      onPress: () => navigation.navigate('Chat', { agentId: 'time_management' }),
+      onPress: () => navigation.navigate('Decision'),
       color: '#2A2A1A',
     },
   ];
@@ -203,7 +290,7 @@ export default function HomeScreen() {
         {/* Daily check-in widget */}
         {!checkinDone && (
           <View style={styles.checkinCard}>
-            <Text style={styles.checkinTitle}>Daily Check-in ☀️</Text>
+            <Text style={styles.checkinTitle}>{t('home.checkin_title')}</Text>
             <Text style={styles.checkinPrompt}>{checkinPrompt}</Text>
             <View style={styles.moodRow}>
               {MOOD_OPTIONS.map((m) => (
@@ -213,7 +300,7 @@ export default function HomeScreen() {
               ))}
             </View>
             <TouchableOpacity onPress={handleCheckinSkip} style={styles.skipBtn}>
-              <Text style={styles.skipBtnText}>Skip for today</Text>
+              <Text style={styles.skipBtnText}>{t('home.checkin_skip')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -244,7 +331,17 @@ export default function HomeScreen() {
         >
           <Text style={styles.featuredEmoji}>{featuredHelper.emoji}</Text>
           <View style={styles.featuredInfo}>
-            <Text style={styles.featuredName}>{t(featuredHelper.nameKey)}</Text>
+            <View style={styles.featuredTitleRow}>
+              <Text style={styles.featuredName}>{t(featuredHelper.nameKey)}</Text>
+              <Text
+                style={[
+                  styles.featuredBadge,
+                  featuredHelper.minimumAIMode === 'cloud' ? styles.featuredBadgeCloud : styles.featuredBadgeLocal,
+                ]}
+              >
+                {featuredHelper.minimumAIMode === 'cloud' ? t('helpers.badge_cloud') : t('helpers.badge_local')}
+              </Text>
+            </View>
             <Text style={styles.featuredDesc} numberOfLines={2}>{t(featuredHelper.descriptionKey)}</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#4A9EFF" />
@@ -275,6 +372,35 @@ export default function HomeScreen() {
           <View style={styles.xpBarBg}>
             <View style={[styles.xpBarFill, { width: `${Math.min((xp / xpMax) * 100, 100)}%` }]} />
           </View>
+          <View style={styles.milestoneWrap}>
+            {MILESTONES.map((m) => {
+              const unlocked = streak >= m.days;
+              return (
+                <View key={m.days} style={[styles.milestoneChip, unlocked && styles.milestoneChipOn]}>
+                  <Text style={styles.milestoneEmoji}>{m.emoji}</Text>
+                  <Text style={[styles.milestoneLabel, unlocked && styles.milestoneLabelOn]}>{m.days}d</Text>
+                </View>
+              );
+            })}
+          </View>
+          {unlockedMilestones.length > 0 && (
+            <TouchableOpacity style={styles.shareMilestoneBtn} onPress={handleShareAchievement} activeOpacity={0.85}>
+              <Ionicons name="share-social-outline" size={14} color="#4A9EFF" />
+              <Text style={styles.shareMilestoneText}>{t('home.share_achievement')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.heatmapCard}>
+          <Text style={styles.heatmapTitle}>{t('home.heatmap_title')}</Text>
+          <View style={styles.heatmapGrid}>
+            {heatmapDays.map((d) => {
+              const count = activityByDay[d] ?? 0;
+              const level = count >= 3 ? 3 : count >= 2 ? 2 : count >= 1 ? 1 : 0;
+              return <View key={d} style={[styles.heatCell, level === 1 && styles.heat1, level === 2 && styles.heat2, level === 3 && styles.heat3]} />;
+            })}
+          </View>
+          <Text style={styles.heatmapHint}>{t('home.heatmap_hint')}</Text>
         </View>
 
         {/* Crisis link */}
@@ -330,10 +456,11 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: typeof DARK_COLORS) {
+  return StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0A0F1E',
+    backgroundColor: c.background,
   },
   scroll: {
     flex: 1,
@@ -356,39 +483,39 @@ const styles = StyleSheet.create({
   appTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#4A9EFF',
+    color: c.accent,
     letterSpacing: 1,
     marginBottom: 4,
   },
   greeting: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: c.text,
     marginBottom: 2,
   },
   subGreeting: {
     fontSize: 14,
-    color: '#8B9CC8',
+    color: c.textMuted,
   },
   avatar: {
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: '#1A3A6B',
+    backgroundColor: c.accentBg,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#4A9EFF',
+    borderColor: c.accent,
   },
   avatarText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#4A9EFF',
+    color: c.accent,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#5A6478',
+    color: c.textDim,
     letterSpacing: 0.8,
     marginBottom: 12,
   },
@@ -411,22 +538,24 @@ const styles = StyleSheet.create({
   modeName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: c.text,
     marginBottom: 4,
   },
   modeDesc: {
     fontSize: 12,
-    color: '#CBD5E1',
+    color: c.textSecondary,
     lineHeight: 16,
   },
   featuredCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     gap: 14,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: c.accentBg,
   },
   featuredEmoji: {
     fontSize: 32,
@@ -435,16 +564,32 @@ const styles = StyleSheet.create({
   },
   featuredInfo: {
     flex: 1,
+    marginRight: 10,
+  },
+  featuredTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   featuredName: {
-    fontSize: 16,
+    color: c.text,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#FFFFFF',
     marginBottom: 3,
   },
+  featuredBadge: {
+    fontSize: 10,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  featuredBadgeCloud: { color: '#FBBF24', backgroundColor: '#3A2A0A' },
+  featuredBadgeLocal: { color: '#34D399', backgroundColor: '#0D2F28' },
   featuredDesc: {
+    color: c.textMuted,
     fontSize: 13,
-    color: '#8B9CC8',
     lineHeight: 18,
   },
   browseBtn: {
@@ -452,35 +597,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#111827',
+    backgroundColor: c.surface,
     borderRadius: 10,
     paddingVertical: 12,
     marginBottom: 28,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: c.border,
   },
   browseBtnText: {
     fontSize: 14,
-    color: '#4A9EFF',
+    color: c.accent,
     fontWeight: '600',
   },
   checkinCard: {
-    backgroundColor: '#111827',
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#2A3A5A',
+    borderColor: c.border,
   },
   checkinTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: c.text,
     marginBottom: 8,
   },
   checkinPrompt: {
     fontSize: 14,
-    color: '#CBD5E1',
+    color: c.textSecondary,
     lineHeight: 20,
     marginBottom: 14,
   },
@@ -489,22 +634,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     marginBottom: 12,
   },
-  moodBtn: {
-    padding: 6,
-  },
-  moodEmoji: {
-    fontSize: 30,
-  },
-  skipBtn: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  skipBtnText: {
-    fontSize: 12,
-    color: '#5A6478',
-  },
+  moodBtn: { padding: 12, borderRadius: 12, backgroundColor: c.surfaceAlt },
+  moodEmoji: { fontSize: 30 },
+  skipBtn: { alignItems: 'center', paddingVertical: 4 },
+  skipBtnText: { fontSize: 12, color: c.textDim },
   progressCard: {
-    backgroundColor: '#111827',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 14,
@@ -515,98 +650,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  streakRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  fireEmoji: {
-    fontSize: 16,
-  },
-  streakText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  xpText: {
-    fontSize: 13,
-    color: '#8B9CC8',
-  },
-  xpBarBg: {
-    height: 6,
-    backgroundColor: '#1F2937',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  xpBarFill: {
-    height: 6,
-    backgroundColor: '#4A9EFF',
-    borderRadius: 3,
-  },
-  crisisBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#1A0A0A',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: '#3B1A1A',
-  },
-  crisisBtnText: {
-    fontSize: 14,
-    color: '#EF4444',
-    fontWeight: '500',
-  },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#111827',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  modalBody: {
-    fontSize: 14,
-    color: '#8B9CC8',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  crisisLineBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#0D1B30',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#1A3A6B',
-  },
-  crisisLineText: {
-    fontSize: 14,
-    color: '#CBD5E1',
-  },
-  modalCloseBtn: {
-    marginTop: 12,
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  modalCloseTxt: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#4A9EFF',
-  },
-});
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  fireEmoji: { fontSize: 16 },
+  streakText: { fontSize: 14, fontWeight: '600', color: c.text },
+  xpText: { fontSize: 13, color: c.textMuted },
+  xpBarBg: { height: 6, backgroundColor: c.surfaceAlt, borderRadius: 3, overflow: 'hidden' },
+  xpBarFill: { height: 6, backgroundColor: c.accent, borderRadius: 3 },
+  milestoneWrap: { marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  milestoneChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.surfaceAlt, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: c.border },
+  milestoneChipOn: { borderColor: c.accent, backgroundColor: c.accentBg },
+  milestoneEmoji: { fontSize: 12 },
+  milestoneLabel: { fontSize: 11, color: c.textMuted, fontWeight: '600' },
+  milestoneLabelOn: { color: c.textSecondary },
+  shareMilestoneBtn: { marginTop: 10, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: c.accentBg },
+  shareMilestoneText: { color: c.accent, fontSize: 12, fontWeight: '600' },
+  heatmapCard: { backgroundColor: c.surface, borderRadius: 14, padding: 14, marginBottom: 14 },
+  heatmapTitle: { color: c.text, fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  heatCell: { width: 12, height: 12, borderRadius: 3, backgroundColor: c.surfaceAlt },
+  heat1: { backgroundColor: c.accentBg },
+  heat2: { backgroundColor: '#2563EB' },
+  heat3: { backgroundColor: c.accent },
+  heatmapHint: { marginTop: 8, color: c.textDim, fontSize: 11 },
+  crisisBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1A0A0A', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#3B1A1A' },
+  crisisBtnText: { fontSize: 14, color: c.danger, fontWeight: '500' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: c.text, marginBottom: 8 },
+  modalBody: { fontSize: 14, color: c.textMuted, lineHeight: 20, marginBottom: 20 },
+  crisisLineBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surface, borderRadius: 10, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: c.accentBg },
+  crisisLineText: { fontSize: 14, color: c.textSecondary },
+  modalCloseBtn: { marginTop: 12, alignItems: 'center', paddingVertical: 14 },
+  modalCloseTxt: { fontSize: 16, fontWeight: '600', color: c.accent },
+  });
+}
