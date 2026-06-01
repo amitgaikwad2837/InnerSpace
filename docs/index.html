@@ -528,26 +528,25 @@
             margin-bottom: 2rem;
         }
 
-        .store-button {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 1rem 2rem;
-            background: var(--dark-surface);
-            border: 2px solid var(--primary);
-            color: var(--light-text);
-            text-decoration: none;
-            border-radius: 0.75rem;
-            transition: all 0.3s;
+        .store-badge {
+            display: inline-block;
+            transition: transform 0.3s, opacity 0.3s;
         }
 
-        .store-button:hover {
-            background: rgba(99, 102, 241, 0.1);
+        .store-badge:hover {
             transform: translateY(-3px);
+            opacity: 0.85;
         }
 
-        .store-icon {
-            font-size: 1.5rem;
+        .store-badge img {
+            height: 56px;
+            width: auto;
+            display: block;
+        }
+
+        .store-badge .play-badge {
+            height: 82px;
+            margin-top: -13px;
         }
 
         /* Footer */
@@ -638,11 +637,16 @@
 
             .download-buttons {
                 flex-direction: column;
+                align-items: center;
             }
 
-            .store-button {
-                width: 100%;
-                justify-content: center;
+            .store-badge img {
+                height: 48px;
+            }
+
+            .store-badge .play-badge {
+                height: 70px;
+                margin-top: -11px;
             }
 
             .footer-bottom {
@@ -910,25 +914,18 @@
         <p>InnerSpace is free to download and use. No login, no ads, no judgment — just you and your AI companion.</p>
         
         <div class="download-buttons">
-            <a href="#" class="store-button">
-                <svg class="store-logo app-store-logo" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.3-3.14-2.53C4.25 17 2.94 12.46 4.7 9.12c.9-1.56 2.64-2.55 4.48-2.58 1.3-.02 2.53.75 3.32.75.78 0 2.26-1.01 3.79-.85.64.06 2.44.32 3.61 2.57-.07.05-2.17 1.27-2.15 3.78.02 3.34 2.92 4.52 2.96 4.58-.12.3-1.23 1.64-2.26 2.33z"/>
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="none"/>
-                </svg>
-                <div>
-                    <div style="font-size: 0.75rem; color: var(--muted-text);">Download on the</div>
-                    <div style="font-weight: bold;">App Store</div>
-                </div>
+            <a href="#" class="store-badge">
+                <img
+                    src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+                    alt="Download on the App Store"
+                />
             </a>
-            <a href="#" class="store-button">
-                <svg class="store-logo" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3.609 1.814L13.792 12 3.609 22.186a1.5 1.5 0 0 1 0-2.121L11.670 12 3.609 3.935a1.5 1.5 0 1 1 2.121-2.121l9.374 9.373a1.5 1.5 0 0 1 0 2.121l-9.374 9.374a1.5 1.5 0 1 1-2.121-2.121L11.67 12 3.609 3.935a1.5 1.5 0 0 1 0-2.121 1.5 1.5 0 0 1 2.121 0z"/>
-                    <path d="M3 1.5a1.5 1.5 0 0 0-1.5 1.5v18a1.5 1.5 0 0 0 1.5 1.5h6v-3H4.5V4.5H9V1.5H3z"/>
-                </svg>
-                <div>
-                    <div style="font-size: 0.75rem; color: var(--muted-text);">Get it on</div>
-                    <div style="font-weight: bold;">Google Play</div>
-                </div>
+            <a href="#" class="store-badge">
+                <img
+                    src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+                    alt="Get it on Google Play"
+                    style="height: 80px; margin-top: -13px;"
+                />
             </a>
         </div>
 
