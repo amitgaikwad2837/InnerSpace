@@ -6,13 +6,12 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
-  StatusBar as RNStatusBar,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AI_MODE_KEY } from '../constants/local-models';
@@ -23,6 +22,7 @@ import {
 import { getCatalogAgents } from '../services/agents-catalog';
 import type { Agent, AIMode } from '../types';
 import { useTheme, DARK_COLORS } from '../context/ThemeContext';
+import InnerSpaceLogo from '../components/InnerSpaceLogo';
 
 const CATEGORY_KEYS = Object.keys(AGENT_CATEGORIES) as AgentCategory[];
 const ALL_KEY = '__all__';
@@ -141,61 +141,73 @@ export default function AgentsScreen() {
     const isPinned = pinnedIds.includes(item.id);
     const isCloudOnly = item.minimumAIMode === 'cloud';
     const blockedInLocalMode = aiMode === 'local' && isCloudOnly;
+    const CardWrapper = blockedInLocalMode ? View : TouchableOpacity;
+    const cardWrapperProps = blockedInLocalMode
+      ? {}
+      : { activeOpacity: 0.82, onPress: () => navigation.navigate('Chat', { agentId: item.id }) };
     return (
-      <TouchableOpacity
+      <CardWrapper
         style={[styles.agentCard, isPinned && styles.agentCardPinned, blockedInLocalMode && styles.agentCardBlocked]}
-        activeOpacity={0.82}
-        onPress={() => {
-          if (blockedInLocalMode) {
-            Alert.alert(t('chat.cloud_only_title'), t('chat.cloud_only_body'));
-            return;
-          }
-          navigation.navigate('Chat', { agentId: item.id });
-        }}
+        {...cardWrapperProps}
       >
         <Text style={styles.agentEmoji}>{item.emoji}</Text>
         <View style={styles.agentInfo}>
           <View style={styles.agentNameRow}>
             <Text style={styles.agentName}>{t(item.nameKey)}</Text>
-            <Text style={[styles.modeBadge, isCloudOnly ? styles.modeBadgeCloud : styles.modeBadgeLocal]}>
-              {isCloudOnly ? t('helpers.badge_cloud') : t('helpers.badge_local')}
-            </Text>
-            {selectedHelperIds.includes(item.id) && (
+            {blockedInLocalMode ? (
+              <View style={styles.cloudLockBadge}>
+                <Feather name="lock" size={9} color="#9CA3AF" />
+                <Text style={styles.cloudLockBadgeText}>{t('helpers.cloud_only_lock')}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.modeBadge, isCloudOnly ? styles.modeBadgeCloud : styles.modeBadgeLocal]}>
+                {isCloudOnly ? t('helpers.badge_cloud') : t('helpers.badge_local')}
+              </Text>
+            )}
+            {selectedHelperIds.includes(item.id) && !blockedInLocalMode && (
               <Text style={styles.pickedBadge}>{t('helpers.my_pick')}</Text>
             )}
           </View>
           <Text style={styles.agentDesc} numberOfLines={2}>
             {t(item.descriptionKey)}
           </Text>
+          {blockedInLocalMode && (
+            <Text style={styles.cloudLockHint}>{t('helpers.cloud_only_hint')}</Text>
+          )}
         </View>
-        <TouchableOpacity onPress={() => togglePin(item.id)} style={styles.pinBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons
-            name={isPinned ? 'heart' : 'heart-outline'}
-            size={18}
-            color={isPinned ? '#EF4444' : '#4A5568'}
-          />
-        </TouchableOpacity>
-      </TouchableOpacity>
+        {!blockedInLocalMode && (
+          <TouchableOpacity onPress={() => togglePin(item.id)} style={styles.pinBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather
+              name="heart"
+              size={18}
+              color={isPinned ? '#EF4444' : '#4A5568'}
+            />
+          </TouchableOpacity>
+        )}
+      </CardWrapper>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('helpers.title')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <InnerSpaceLogo size={28} />
+          <Text style={styles.headerTitle}>{t('helpers.title')}</Text>
+        </View>
         <TouchableOpacity
           style={styles.createBtn}
           onPress={() => navigation.navigate('CreateAgent')}
           activeOpacity={0.8}
         >
-          <Ionicons name="add" size={22} color="#4A9EFF" />
+          <Feather name="plus" size={22} color="#4A9EFF" />
         </TouchableOpacity>
       </View>
 
       {/* Search bar */}
       <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color={colors.textDim} style={styles.searchIcon} />
+        <Feather name="search" size={16} color={colors.textDim} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder={t('helpers.search_placeholder')}
@@ -215,7 +227,7 @@ export default function AgentsScreen() {
               onPress={() => setOnlyMyHelpers((v) => !v)}
               activeOpacity={0.8}
             >
-              <Ionicons name="star" size={13} color={onlyMyHelpers ? '#4A9EFF' : '#8B9CC8'} />
+              <Feather name="star" size={13} color={onlyMyHelpers ? '#4A9EFF' : '#8B9CC8'} />
               <Text style={[styles.filterChipText, onlyMyHelpers && styles.filterChipTextActive]}>
                 {t('helpers.my_helpers_only')}
               </Text>
@@ -227,7 +239,7 @@ export default function AgentsScreen() {
               onPress={() => setShowOnlyLocalCapable((v) => !v)}
               activeOpacity={0.8}
             >
-              <Ionicons name="home" size={13} color={showOnlyLocalCapable ? '#34D399' : '#8B9CC8'} />
+              <Feather name="home" size={13} color={showOnlyLocalCapable ? '#34D399' : '#8B9CC8'} />
               <Text style={[styles.filterChipText, showOnlyLocalCapable && styles.filterChipTextActive]}>
                 {t('helpers.local_capable_only')}
               </Text>
@@ -252,6 +264,7 @@ export default function AgentsScreen() {
         data={filteredAgents}
         keyExtractor={(item) => item.id}
         renderItem={renderAgent}
+        style={{ flex: 1 }}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -268,21 +281,21 @@ export default function AgentsScreen() {
 
 function createStyles(c: typeof DARK_COLORS) {
   return StyleSheet.create({
-  root: { flex: 1, backgroundColor: c.background, paddingTop: RNStatusBar.currentHeight ?? 0 },
+  root: { flex: 1, backgroundColor: c.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
   headerTitle: { fontSize: 24, fontWeight: '700', color: c.text },
   createBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 10, marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 12 },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 40, color: c.text, fontSize: 15 },
-  filterRow: { paddingHorizontal: 16, marginBottom: 8 },
-  filterChip: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, paddingHorizontal: 10, paddingVertical: 6 },
+  filterRow: { paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, paddingHorizontal: 12, paddingVertical: 8 },
   filterChipActive: { borderColor: c.accent, backgroundColor: c.accentBg },
   filterChipText: { color: c.textMuted, fontSize: 12, fontWeight: '600' },
   filterChipTextActive: { color: c.accent },
-  catScroll: { maxHeight: 48, marginBottom: 8 },
-  catContent: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
-  catTab: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, gap: 5 },
+  catScroll: { flexGrow: 0, flexShrink: 0, marginBottom: 8 },
+  catContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' },
+  catTab: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, gap: 5 },
   catTabActive: { backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accent },
   catEmoji: { fontSize: 14 },
   catLabel: { fontSize: 13, color: c.textMuted },
@@ -290,7 +303,10 @@ function createStyles(c: typeof DARK_COLORS) {
   listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 10 },
   agentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, padding: 14, gap: 14, borderWidth: 1, borderColor: 'transparent' },
   agentCardPinned: { borderColor: c.danger, backgroundColor: '#1A0F0F' },
-  agentCardBlocked: { opacity: 0.82, borderColor: '#805A20' },
+  agentCardBlocked: { opacity: 0.65 },
+  cloudLockBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#1F2937', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
+  cloudLockBadgeText: { fontSize: 9, color: '#9CA3AF', fontWeight: '600' },
+  cloudLockHint: { fontSize: 11, color: '#6B7280', marginTop: 3 },
   agentEmoji: { fontSize: 28, width: 40, textAlign: 'center' },
   agentInfo: { flex: 1 },
   agentNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' },

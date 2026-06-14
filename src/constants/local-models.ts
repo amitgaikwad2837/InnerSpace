@@ -15,6 +15,14 @@ import type { LocalModel, LocalModelInfo } from '../types';
 
 export const LOCAL_MODELS: LocalModelInfo[] = [
   {
+    id: 'gemma2b_mediapipe',
+    label: 'Gemma 2B (Google, MediaPipe)',
+    description: 'Coming soon. Planned native MediaPipe runtime integration for Gemma 2B in a development build.',
+    sizeGB: 1.8,
+    repoId: 'google/gemma-2b-it',
+    supported: false,
+  },
+  {
     id: 'gemma3n',
     label: 'Gemma 3n (Google)',
     description: 'Coming soon. This build does not include a packaged ExecuTorch export for Gemma 3n yet.',
@@ -34,7 +42,7 @@ export const LOCAL_MODELS: LocalModelInfo[] = [
     id: 'llama321b',
     label: 'Llama 3.2 1B (Meta)',
     description: 'Working in this build via ExecuTorch. Good default for fast on-device chat.',
-    sizeGB: 0.8,
+    sizeGB: 1.2,
     repoId: 'meta-llama/Llama-3.2-1B-Instruct-GGUF',
     supported: true,
   },
@@ -42,7 +50,7 @@ export const LOCAL_MODELS: LocalModelInfo[] = [
     id: 'qwen251b',
     label: 'Qwen 2.5 1.5B (Alibaba)',
     description: 'Working in this build via ExecuTorch. Strong multilingual on-device option.',
-    sizeGB: 1.0,
+    sizeGB: 1.5,
     repoId: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     supported: true,
   },
@@ -54,8 +62,12 @@ export function getLocalModelById(id: LocalModel): LocalModelInfo | undefined {
 
 /** Storage keys */
 export const AI_MODE_KEY = '@innerspace:ai_mode';             // 'local' | 'cloud'
+export const LOCAL_RUNTIME_KEY = '@innerspace:local_runtime'; // 'executorch' | 'mediapipe'
 export const LOCAL_MODEL_KEY = '@innerspace:local_model';    // LocalModel id
+export const MEDIAPIPE_MODEL_PATH_KEY = '@innerspace:mediapipe_model_path';
 export const USER_PROFILE_KEY = '@innerspace:user_profile';  // UserProfile JSON
+export const DEFAULT_LOCAL_RUNTIME: import('../types').LocalRuntime = 'executorch';
+export const DEFAULT_MEDIAPIPE_MODEL_PATH = '/data/local/tmp/llm/gemma2b.task';
 
 /** Derive age group from a numeric age */
 export function getAgeGroup(age: number | null): import('../types').AgeGroup | null {

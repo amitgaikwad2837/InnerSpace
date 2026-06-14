@@ -112,6 +112,63 @@ export async function scheduleWeeklyDigest(): Promise<void> {
 }
 
 /**
+ * Schedules a repeating reminder for a habit.
+ * Daily habits fire every day; weekly habits fire on the same weekday the reminder was set.
+ * Returns the notification identifier (needed later to cancel/reschedule), or null on failure.
+ */
+export async function scheduleHabitReminder(
+  habitId: string,
+  habitName: string,
+  frequency: 'daily' | 'weekly',
+  timeStr: string, // "HH:MM" 24-hour
+): Promise<string | null> {
+  try {
+    const Notifications = await getExpoNotifications();
+    if (!Notifications) return null;
+    const granted = await requestPermission();
+    if (!granted) return null;
+
+    const [hour, minute] = timeStr.split(':').map(Number);
+
+    const trigger =
+      frequency === 'daily'
+        ? { type: SchedulableTriggerInputTypes.DAILY, hour, minute, repeats: true }
+        : {
+            type: SchedulableTriggerInputTypes.WEEKLY,
+            weekday: new Date().getDay() + 1, // 1=Sunday … 7=Saturday
+            hour,
+            minute,
+            repeats: true,
+          };
+
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🔔 Habit reminder',
+        body: `Time for: ${habitName}`,
+        data: { type: 'habit_reminder', habitId },
+      },
+      trigger,
+    });
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cancels a previously scheduled habit reminder by its notification identifier.
+ */
+export async function cancelHabitReminder(reminderId: string): Promise<void> {
+  try {
+    const Notifications = await getExpoNotifications();
+    if (!Notifications) return;
+    await Notifications.cancelScheduledNotificationAsync(reminderId);
+  } catch {
+    // Non-critical
+  }
+}
+
+/**
  * Schedules a one-time notification for when helper quota is expected to reset.
  */
 export async function scheduleHelperReadyNotification(

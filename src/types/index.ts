@@ -20,6 +20,8 @@ export interface Message {
   timestamp: Date;
   isSafetyRedirect?: boolean;
   safetyCategory?: string;
+  imageUri?: string;   // local URI for display in bubble
+  fileName?: string;   // document name for display
 }
 
 export interface Conversation {
@@ -37,6 +39,11 @@ export interface Habit {
   streak: number;
   lastCompletedAt?: Date;
   createdAt: Date;
+  afterHabitId?: string;       // habit stacking: cue habit id
+  savedStreak?: number;        // catch-up: streak before it broke
+  catchUpProgress?: number;    // catch-up: consecutive completions toward recovery (0-3)
+  reminderTime?: string;       // "HH:MM" 24hr — e.g. "08:00"
+  reminderId?: string;         // expo-notifications identifier, needed to cancel/reschedule
 }
 
 export interface JournalEntry {
@@ -45,6 +52,23 @@ export interface JournalEntry {
   content: string;
   insight?: string;
   entryDate: Date;
+  tags?: string[];             // emotion tags e.g. ['anxious', 'grateful']
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  targetDate?: string;         // ISO date string, optional
+  habitIds: string[];          // linked habit ids
+  createdAt: string;
+}
+
+export interface PinnedInsight {
+  id: string;
+  content: string;
+  agentId: string;
+  agentEmoji: string;
+  pinnedAt: string;            // ISO timestamp
 }
 
 export interface User {
@@ -65,7 +89,8 @@ export interface UserPreferences {
 
 export type AgeGroup = 'teen' | 'young_adult' | 'adult' | 'senior';
 export type AIMode = 'local' | 'cloud';
-export type LocalModel = 'gemma3n' | 'phi3mini' | 'llama321b' | 'qwen251b';
+export type LocalRuntime = 'executorch' | 'mediapipe';
+export type LocalModel = 'gemma2b_mediapipe' | 'gemma3n' | 'phi3mini' | 'llama321b' | 'qwen251b';
 
 export interface UserProfile {
   name: string;

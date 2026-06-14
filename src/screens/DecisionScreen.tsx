@@ -1,5 +1,5 @@
-﻿/**
- * DecisionScreen â€” Structured Decision Coaching Mode
+/**
+ * DecisionScreen — Structured Decision Coaching Mode
  *
  * Guides the user through a two-option decision using AI-powered analysis.
  * Sessions are persisted locally so users can review past decisions.
@@ -15,14 +15,13 @@ import {
   ScrollView,
   FlatList,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  StatusBar as RNStatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callAI } from '../services/gemini-service';
@@ -30,21 +29,22 @@ import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 import type { DecisionSession } from '../types';
 
 const DECISION_SESSIONS_KEY = '@innerspace:decision_sessions';
+const DECISION_DRAFT_KEY = '@innerspace:decision_draft';
 
-const DECISION_SYSTEM_PROMPT = `You are a calm, thoughtful life coach helping someone make an important decision. You speak like a trusted friend who thinks clearly â€” not a consultant, not a chatbot.
+const DECISION_SYSTEM_PROMPT = `You are a calm, thoughtful life coach helping someone make an important decision. You speak like a trusted friend who thinks clearly — not a consultant, not a chatbot.
 
 RULES:
 - Never identify yourself as an AI.
-- Speak warmly, directly, and conversationally â€” short sentences, plain language.
+- Speak warmly, directly, and conversationally — short sentences, plain language.
 - Do not use hollow phrases like "Great question!" or "Certainly!".
 - If the decision involves risk to safety, health, or finances, gently recommend professional advice.
 - Structure your analysis clearly but don't be robotic.
 
 FORMAT for your response:
 1. Briefly reflect the decision back in your own words (1-2 sentences).
-2. Analyse Option A â€” key upsides, key risks (3-4 bullet points total).
-3. Analyse Option B â€” key upsides, key risks (3-4 bullet points total).
-4. A short honest "what I'd think about" section â€” questions worth sitting with.
+2. Analyse Option A — key upsides, key risks (3-4 bullet points total).
+3. Analyse Option B — key upsides, key risks (3-4 bullet points total).
+4. A short honest "what I'd think about" section — questions worth sitting with.
 5. Close with one grounding sentence.`;
 
 type ScreenView = 'form' | 'result' | 'history' | 'historyDetail';
@@ -77,6 +77,15 @@ export default function DecisionScreen() {
   useFocusEffect(
     useCallback(() => {
       loadSessions();
+      AsyncStorage.getItem(DECISION_DRAFT_KEY).then((raw) => {
+        if (!raw) return;
+        try {
+          const draft = JSON.parse(raw);
+          if (draft.decision) setDecision(draft.decision);
+          if (draft.optionA) setOptionA(draft.optionA);
+          if (draft.optionB) setOptionB(draft.optionB);
+        } catch { /* ignore */ }
+      });
     }, []),
   );
 
@@ -109,7 +118,7 @@ export default function DecisionScreen() {
       const prompt = `I need help deciding: ${decision.trim()}\n\nOption A: ${optionA.trim()}\nOption B: ${optionB.trim()}`;
       const response = await callAI(prompt, DECISION_SYSTEM_PROMPT, []);
       if (response.error === 'no_key') {
-        setError('Please add your Gemini API key in Settings to use this feature.');
+        setError('You\'ll need to set up a helper in Settings before using this feature.');
         return;
       }
       if (response.error || response.isQuotaLimited) {
@@ -130,7 +139,7 @@ export default function DecisionScreen() {
       setClaritySaved(false);
       setView('result');
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('Something didn\'t go as planned. Try again in a moment.');
     } finally {
       setLoading(false);
     }
@@ -144,6 +153,10 @@ export default function DecisionScreen() {
     setClaritySaved(true);
   }
 
+  function saveDraft() {
+    AsyncStorage.setItem(DECISION_DRAFT_KEY, JSON.stringify({ decision, optionA, optionB })).catch(() => {});
+  }
+
   function handleReset() {
     setDecision('');
     setOptionA('');
@@ -152,6 +165,7 @@ export default function DecisionScreen() {
     setClarityScore(null);
     setClaritySaved(false);
     setError('');
+    AsyncStorage.removeItem(DECISION_DRAFT_KEY).catch(() => {});
     setView('form');
   }
 
@@ -160,7 +174,7 @@ export default function DecisionScreen() {
     setView('historyDetail');
   }
 
-  // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Header ──────────────────────────────────────────────────────────────────
   function renderHeader() {
     const showBack = view === 'historyDetail';
     const showNew = view === 'result' || view === 'history' || view === 'historyDetail';
@@ -171,19 +185,19 @@ export default function DecisionScreen() {
           style={styles.backBtn}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
+          <Feather name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('decide.title')}</Text>
         <View style={styles.headerRight}>
           {showNew && (
             <TouchableOpacity onPress={handleReset} style={styles.headerChip} activeOpacity={0.8}>
-              <Ionicons name="add-outline" size={15} color={colors.accent} />
+              <Feather name="plus" size={15} color={colors.accent} />
               <Text style={styles.headerChipText}>{t('decide.new_btn')}</Text>
             </TouchableOpacity>
           )}
           {(view === 'form' || view === 'result') && (
-            <TouchableOpacity onPress={() => setView('history')} style={styles.headerChip} activeOpacity={0.8}>
-              <Ionicons name="time-outline" size={15} color={colors.textMuted} />
+            <TouchableOpacity onPress={() => { if (view === 'form') saveDraft(); setView('history'); }} style={styles.headerChip} activeOpacity={0.8}>
+              <Feather name="clock" size={15} color={colors.textMuted} />
               <Text style={[styles.headerChipText, { color: colors.textMuted }]}>{t('decide.history')}</Text>
             </TouchableOpacity>
           )}
@@ -192,7 +206,7 @@ export default function DecisionScreen() {
     );
   }
 
-  // â”€â”€ Form view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Form view ────────────────────────────────────────────────────────────────
   function renderForm() {
     return (
       <>
@@ -254,7 +268,7 @@ export default function DecisionScreen() {
             </>
           ) : (
             <>
-              <Ionicons name="analytics-outline" size={18} color="#FFFFFF" />
+              <Feather name="bar-chart-2" size={18} color="#FFFFFF" />
               <Text style={styles.startBtnText}>{t('decide.start')}</Text>
             </>
           )}
@@ -263,7 +277,7 @@ export default function DecisionScreen() {
     );
   }
 
-  // â”€â”€ Result view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Result view ──────────────────────────────────────────────────────────────
   function renderResult(session: DecisionSession) {
     return (
       <>
@@ -281,13 +295,13 @@ export default function DecisionScreen() {
 
         <View style={styles.analysisCard}>
           <View style={styles.analysisHeader}>
-            <Ionicons name="sparkles" size={16} color={colors.accent} />
-            <Text style={styles.analysisLabel}>{t('decide.analysis_label')}</Text>
+            <Feather name="zap" size={16} color={colors.accent} />
+            <Text style={styles.analysisLabel}>Here's what I'm thinking</Text>
           </View>
           <Text style={styles.analysisText}>{session.analysis}</Text>
         </View>
 
-        {/* Clarity score â€” GAP-07 */}
+        {/* Clarity score — GAP-07 */}
         <View style={styles.clarityCard}>
           <Text style={styles.clarityPrompt}>{t('decide.clarity_prompt')}</Text>
           <View style={styles.clarityRow}>
@@ -304,39 +318,44 @@ export default function DecisionScreen() {
           </View>
           {clarityScore !== null && !claritySaved && (
             <TouchableOpacity style={styles.claritySaveBtn} onPress={handleSaveClarityScore} activeOpacity={0.85}>
-              <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+              <Feather name="check-circle" size={16} color={colors.accent} />
               <Text style={styles.claritySaveBtnText}>{t('decide.clarity_save')}</Text>
             </TouchableOpacity>
           )}
           {(claritySaved || (session.clarityScore !== undefined && clarityScore === null)) && (
             <View style={styles.claritySavedRow}>
-              <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+              <Feather name="check-circle" size={14} color={colors.success} />
               <Text style={styles.claritySavedText}>{t('decide.clarity_saved')} Â· {session.clarityScore ?? clarityScore}/10</Text>
             </View>
           )}
         </View>
 
         <TouchableOpacity style={styles.resetBtnLarge} onPress={handleReset} activeOpacity={0.8}>
-          <Ionicons name="refresh-outline" size={18} color={colors.accent} />
+          <Feather name="refresh-cw" size={18} color={colors.accent} />
           <Text style={styles.resetBtnLargeText}>{t('decide.new_decision')}</Text>
         </TouchableOpacity>
       </>
     );
   }
 
-  // â”€â”€ History list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── History list ─────────────────────────────────────────────────────────────
   function renderHistoryItem({ item }: { item: DecisionSession }) {
     const date = new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     return (
       <TouchableOpacity style={styles.historyCard} onPress={() => handleViewHistory(item)} activeOpacity={0.85}>
         <View style={styles.historyCardTop}>
           <Text style={styles.historyDate}>{date}</Text>
-          {item.clarityScore !== undefined && (
-            <View style={styles.clarityBadge}>
-              <Ionicons name="compass-outline" size={11} color={colors.accent} />
-              <Text style={styles.clarityBadgeText}>{item.clarityScore}/10</Text>
-            </View>
-          )}
+          {item.clarityScore !== undefined && (() => {
+            const score = item.clarityScore!;
+            const bg = score >= 8 ? '#052E16' : score >= 5 ? '#2A1A03' : '#1A0A0A';
+            const fg = score >= 8 ? '#4ADE80' : score >= 5 ? '#FCD34D' : '#F87171';
+            return (
+              <View style={[styles.clarityBadge, { backgroundColor: bg }]}>
+                <Feather name="compass" size={11} color={fg} />
+                <Text style={[styles.clarityBadgeText, { color: fg }]}>{score}/10</Text>
+              </View>
+            );
+          })()}
         </View>
         <Text style={styles.historyDecision} numberOfLines={2}>{item.decision}</Text>
         <View style={styles.historyPills}>
@@ -345,13 +364,13 @@ export default function DecisionScreen() {
         </View>
         <View style={styles.viewAnalysisRow}>
           <Text style={styles.viewAnalysisText}>{t('decide.view_analysis')}</Text>
-          <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
+          <Feather name="chevron-right" size={14} color={colors.textDim} />
         </View>
       </TouchableOpacity>
     );
   }
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.root}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -366,11 +385,11 @@ export default function DecisionScreen() {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="compass-outline" size={44} color={colors.textDim} />
+                <Feather name="compass" size={44} color={colors.textDim} />
                 <Text style={styles.emptyTitle}>{t('decide.history_empty')}</Text>
                 <Text style={styles.emptyHint}>{t('decide.history_hint')}</Text>
                 <TouchableOpacity style={styles.emptyBtn} onPress={handleReset} activeOpacity={0.8}>
-                  <Ionicons name="add-circle-outline" size={16} color={colors.accent} />
+                  <Feather name="plus-circle" size={16} color={colors.accent} />
                   <Text style={styles.emptyBtnText}>{t('decide.new_decision')}</Text>
                 </TouchableOpacity>
               </View>
@@ -395,7 +414,7 @@ export default function DecisionScreen() {
 
 function createStyles(c: typeof DARK_COLORS) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: c.background, paddingTop: RNStatusBar.currentHeight ?? 0 },
+    root: { flex: 1, backgroundColor: c.background },
     header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
     backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
     headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: c.text, marginLeft: 4 },

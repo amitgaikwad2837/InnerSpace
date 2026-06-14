@@ -1,0 +1,38 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 1234567..abcdefg 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -55,3 +55,32 @@ dependencies { dependencyHandler ->
+   testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+   testImplementation 'org.robolectric:robolectric:4.16'
+ }
++
++// Workaround: expo-autolinking's generatePackagesList incorrectly includes
++// ExpoFetchModule (which lives in the same :expo module) in modulesMap without
++// the .filterNot { it.packageName == "expo" } guard that packagesList uses.
++// The static ::class.java reference fails in incremental Kotlin builds because
++// ExpoFetchModule.class isn't yet in the incremental cache when the generated
++// file is recompiled. Fix: replace the static reference with Class.forName(),
++// which resolves at runtime where ExpoFetchModule IS in the DEX.
++afterEvaluate {
++  def generateTask = tasks.findByName("generatePackagesList")
++  if (generateTask) {
++    def fixTask = tasks.register("fixExpoSelfReference") {
++      dependsOn generateTask
++      doLast {
++        def genFile = file("${buildDir}/generated/expo/src/main/java/expo/modules/ExpoModulesPackageList.kt")
++        if (genFile.exists()) {
++          def content = genFile.text
++          content = content.replaceAll(
++            /expo\.modules\.fetch\.ExpoFetchModule::class\.java to null/,
++            '@Suppress("UNCHECKED_CAST") (Class.forName("expo.modules.fetch.ExpoFetchModule") as Class<out expo.modules.kotlin.modules.Module>) to null'
++          )
++          genFile.text = content
++        }
++      }
++    }
++    tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
++      dependsOn fixTask
++    }
++  }
++}

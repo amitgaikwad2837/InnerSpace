@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-executorch/android/build.gradle b/node_modules/react-native-executorch/android/build.gradle
+index 5b1cfd2..725fb75 100644
+--- a/node_modules/react-native-executorch/android/build.gradle
++++ b/node_modules/react-native-executorch/android/build.gradle
+@@ -88,6 +88,8 @@ def resolveReactNativeDirectory() {
+ def reactNativeRootDir = resolveReactNativeDirectory()
+ 
+ android {
++  ndkVersion rootProject.ext.ndkVersion
++
+   if (supportsNamespace()) {
+     namespace "com.swmansion.rnexecutorch"
+ 

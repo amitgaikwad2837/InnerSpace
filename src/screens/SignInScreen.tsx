@@ -12,7 +12,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/auth';
 import { saveUser, saveAccessToken } from '../services/storage-service';
@@ -193,7 +193,7 @@ export default function SignInScreen() {
           <ActivityIndicator color="#1A1A2E" size="small" />
         ) : (
           <>
-            <Ionicons name="logo-google" size={20} color="#1A1A2E" style={styles.googleIcon} />
+            <MaterialCommunityIcons name="logo-google" size={20} color="#1A1A2E" style={styles.googleIcon} />
             <Text style={styles.googleBtnText}>{t('auth.signin')}</Text>
           </>
         )}

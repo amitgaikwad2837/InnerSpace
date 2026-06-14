@@ -1,33 +1,15 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, View } from 'react-native';
+
+const logoAsset = require('../../assets/icon.png');
 
 export default function InnerSpaceLogo({ size = 36 }: { size?: number }) {
-  const ring = Math.max(size, 28);
+  const s = Math.max(size, 20);
   return (
-    <View style={[styles.wrap, { width: ring, height: ring, borderRadius: ring / 2 }]}>
-      <View style={[styles.core, { borderRadius: (ring - 10) / 2 }]}>
-        <Text style={styles.emoji}>🧠</Text>
-      </View>
-    </View>
+    <Image
+      source={logoAsset}
+      style={{ width: s, height: s, borderRadius: Math.round(s * 0.2) }}
+      resizeMode="contain"
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#102449',
-    borderWidth: 1,
-    borderColor: '#4A9EFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  core: {
-    width: '80%',
-    height: '80%',
-    backgroundColor: '#0A0F1E',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: 16,
-  },
-});

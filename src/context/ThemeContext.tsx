@@ -20,49 +20,49 @@ interface ThemeContextValue {
 }
 
 export const DARK_COLORS = {
-  background: '#0A0F1E',
-  surface: '#111827',
-  surfaceAlt: '#1F2937',
-  text: '#FFFFFF',
-  textSecondary: '#CBD5E1',
+  background: '#0C0F1D',
+  surface: '#131929',
+  surfaceAlt: '#1C2236',
+  text: '#F0F4FF',
+  textSecondary: '#C8D5F0',
   textMuted: '#8B9CC8',
-  textDim: '#5A6478',
-  border: '#1F2937',
-  accent: '#4A9EFF',
-  accentBg: '#1A3A6B',
+  textDim: '#556080',
+  border: '#1E2A40',
+  accent: '#5BA8FF',
+  accentBg: '#172847',
   danger: '#EF4444',
-  success: '#22C55E',
-  tabBar: '#111827',
-  tabBarBorder: '#1F2937',
+  success: '#34D399',
+  tabBar: '#0F1526',
+  tabBarBorder: '#1E2A40',
 };
 
 export const LIGHT_COLORS: typeof DARK_COLORS = {
-  background: '#F0F4FF',
+  background: '#F2F7FF',
   surface: '#FFFFFF',
-  surfaceAlt: '#E8EDF8',
-  text: '#0A0F1E',
-  textSecondary: '#1E2A4A',
-  textMuted: '#4A5578',
-  textDim: '#8B9CC8',
-  border: '#D1D9EF',
-  accent: '#1A5FBB',
-  accentBg: '#D6E8FF',
+  surfaceAlt: '#E8F0FD',
+  text: '#0D1A2E',
+  textSecondary: '#1E3A5F',
+  textMuted: '#4A6A9A',
+  textDim: '#8AABCC',
+  border: '#C8DCFF',
+  accent: '#4A9EFF',
+  accentBg: '#DCF0FF',
   danger: '#DC2626',
   success: '#16A34A',
   tabBar: '#FFFFFF',
-  tabBarBorder: '#D1D9EF',
+  tabBarBorder: '#C8DCFF',
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
-  mode: 'dark',
-  isDark: true,
+  mode: 'system',
+  isDark: false,
   setMode: () => {},
-  colors: DARK_COLORS,
+  colors: LIGHT_COLORS,
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useColorScheme();
-  const [mode, setModeState] = useState<ThemeMode>('dark');
+  const [mode, setModeState] = useState<ThemeMode>('system');
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_KEY).then((saved) => {

@@ -2,15 +2,16 @@ import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  TextInput,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Alert,
-  StatusBar as RNStatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import InnerSpaceLogo from '../components/InnerSpaceLogo';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAgentById } from '../constants/agents';
 import type { Conversation } from '../types';
@@ -23,6 +24,7 @@ export default function HistoryScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [query, setQuery] = useState('');
 
   // Reload every time tab comes into focus
   useFocusEffect(
@@ -43,10 +45,10 @@ export default function HistoryScreen() {
   }
 
   async function deleteConversation(id: string) {
-    Alert.alert('Delete conversation', 'Remove this conversation?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('Remove this conversation?', 'This chat will be permanently deleted.', [
+      { text: 'Keep it', style: 'cancel' },
       {
-        text: 'Delete',
+        text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           const updated = conversations.filter((c) => c.id !== id);
@@ -58,10 +60,10 @@ export default function HistoryScreen() {
   }
 
   async function clearAll() {
-    Alert.alert('Clear all history', 'This will delete all conversations. Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('Clear everything?', 'All your conversations will be gone for good. This can\'t be undone.', [
+      { text: 'Keep them', style: 'cancel' },
       {
-        text: 'Clear all',
+        text: 'Yes, clear all',
         style: 'destructive',
         onPress: async () => {
           setConversations([]);
@@ -71,11 +73,29 @@ export default function HistoryScreen() {
     ]);
   }
 
+  const thisYear = new Date().getFullYear();
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return conversations;
+    const q = query.toLowerCase();
+    return conversations.filter((c) => {
+      const agent = getAgentById(c.agentId);
+      if (agent?.name?.toLowerCase().includes(q)) return true;
+      if (c.summary?.toLowerCase().includes(q)) return true;
+      // Task #24: full-text search across all messages
+      return c.messages.some((m) => m.content.toLowerCase().includes(q));
+    });
+  }, [conversations, query]);
+
   function renderItem({ item }: { item: Conversation }) {
     const agent = getAgentById(item.agentId);
     const lastMsg = item.messages[item.messages.length - 1];
     const date = new Date(item.createdAt);
-    const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const isPriorYear = date.getFullYear() < thisYear;
+    const dateStr = date.toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric',
+      ...(isPriorYear && { year: 'numeric' }),
+    });
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
@@ -92,43 +112,63 @@ export default function HistoryScreen() {
             <Text style={styles.cardDate}>{dateStr} · {timeStr}</Text>
           </View>
           <Text style={styles.cardPreview} numberOfLines={2}>
-            {item.summary ?? lastMsg?.content ?? 'No messages yet'}
+            {item.summary ?? lastMsg?.content ?? 'No messages in this conversation yet'}
           </Text>
           {item.summary && (
             <View style={styles.summaryBadge}>
-              <Ionicons name="sparkles" size={10} color={colors.accent} />
+              <Feather name="zap" size={10} color={colors.accent} />
               <Text style={styles.cardSummaryBadge}>summarised</Text>
             </View>
           )}
           <View style={styles.msgCountRow}>
-            <Ionicons name="chatbubble-outline" size={11} color={colors.textDim} />
+            <Feather name="message-circle" size={11} color={colors.textDim} />
             <Text style={styles.cardCount}>
               {item.messages.length} message{item.messages.length !== 1 ? 's' : ''}
             </Text>
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={16} color="#4A5568" />
+        <Feather name="chevron-right" size={16} color="#4A5568" />
       </TouchableOpacity>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Ionicons name="time" size={22} color={colors.accent} />
+          <InnerSpaceLogo size={26} />
           <Text style={styles.headerTitle}>History</Text>
         </View>
         {conversations.length > 0 && (
           <TouchableOpacity onPress={clearAll} style={styles.clearBtn}>
-            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+            <Feather name="trash-2" size={18} color="#EF4444" />
           </TouchableOpacity>
         )}
       </View>
 
+      {/* Search bar */}
+      {conversations.length > 0 && (
+        <View style={styles.searchBar}>
+          <Feather name="search" size={16} color={colors.textDim} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by helper or message…"
+            placeholderTextColor={colors.textDim}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+          />
+          {!!query && (
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="x-circle" size={16} color={colors.textDim} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       <FlatList
-        data={conversations}
+        data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
@@ -136,17 +176,17 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>💬</Text>
-            <Text style={styles.emptyTitle}>No conversations yet</Text>
+            <Text style={styles.emptyTitle}>Nothing here yet</Text>
             <Text style={styles.emptyBody}>
-              Your chat history will appear here after you talk to an agent.
+              Your conversations will show up here once you start talking to one of your helpers.
             </Text>
             <TouchableOpacity
               style={styles.emptyBtn}
               onPress={() => navigation.navigate('Agents')}
               activeOpacity={0.85}
             >
-              <Ionicons name="grid-outline" size={15} color={colors.accent} />
-              <Text style={styles.emptyBtnText}>Browse agents</Text>
+              <Feather name="grid" size={15} color={colors.accent} />
+              <Text style={styles.emptyBtnText}>Meet your helpers</Text>
             </TouchableOpacity>
           </View>
         }
@@ -157,11 +197,13 @@ export default function HistoryScreen() {
 
 function createStyles(c: typeof DARK_COLORS) {
   return StyleSheet.create({
-  root: { flex: 1, backgroundColor: c.background, paddingTop: RNStatusBar.currentHeight ?? 0 },
+  root: { flex: 1, backgroundColor: c.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { fontSize: 24, fontWeight: '700', color: c.text },
   clearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1A0A0A', alignItems: 'center', justifyContent: 'center' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 10, backgroundColor: c.surface, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: c.text },
   listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 10, flexGrow: 1 },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, padding: 14, gap: 12 },
   cardEmoji: { fontSize: 28, width: 40, textAlign: 'center' },

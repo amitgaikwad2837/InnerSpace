@@ -22,15 +22,20 @@ export interface LocalModelDownloadStatus {
   downloaded: boolean;
   downloading: boolean;
   progress: number;
+  bytesWritten: number;
   supported: boolean;
   available: boolean;
   error?: string;
 }
 
+// AsyncStorage key prefix used to clear any resume data left by older builds
+const DOWNLOAD_RESUME_PREFIX = '@innerspace:dl_resume:';
+
 let executorchInitialized = false;
 let activeModelId: LocalModel | null = null;
 let activeModule: LLMModule | null = null;
 const downloadProgress = new Map<LocalModel, number>();
+const downloadBytesWritten = new Map<LocalModel, number>();
 const downloadErrors = new Map<LocalModel, string>();
 const inFlightDownloads = new Map<LocalModel, Promise<void>>();
 
@@ -61,6 +66,17 @@ function getFileNameForRemote(source: string): string {
 }
 
 class ExpoExecutorchFetcher implements ResourceFetcherAdapter {
+  cumulativeBytesWritten = 0;
+  private _completedFilesBytes = 0;
+  private currentTask: FileSystem.DownloadResumable | null = null;
+
+  async pauseCurrentTask(): Promise<void> {
+    if (this.currentTask) {
+      try { await this.currentTask.pauseAsync(); } catch {}
+      this.currentTask = null;
+    }
+  }
+
   private async ensureDir(): Promise<void> {
     const dir = getCacheDir();
     const info = await FileSystem.getInfoAsync(dir);
@@ -74,6 +90,9 @@ class ExpoExecutorchFetcher implements ResourceFetcherAdapter {
     ...sources: Array<string | number | object>
   ): Promise<{ paths: string[]; wasDownloaded: boolean[] }> {
     await this.ensureDir();
+
+    this.cumulativeBytesWritten = 0;
+    this._completedFilesBytes = 0;
 
     const paths: string[] = [];
     const wasDownloaded: boolean[] = [];
@@ -93,19 +112,24 @@ class ExpoExecutorchFetcher implements ResourceFetcherAdapter {
       }
 
       const targetUri = `${getCacheDir()}${getFileNameForRemote(source)}`;
+      const destPath = stripFileScheme(targetUri);
       const existing = await FileSystem.getInfoAsync(targetUri);
-      if (existing.exists) {
-        paths.push(stripFileScheme(targetUri));
+      if (existing.exists && !existing.isDirectory) {
+        this._completedFilesBytes += (existing as any).size ?? 0;
+        paths.push(destPath);
         wasDownloaded.push(false);
         callback?.((index + 1) / total);
         continue;
       }
+
+      const completedAtStart = this._completedFilesBytes;
 
       const task = FileSystem.createDownloadResumable(
         source,
         targetUri,
         {},
         (progress) => {
+          this.cumulativeBytesWritten = completedAtStart + progress.totalBytesWritten;
           const fileProgress = progress.totalBytesExpectedToWrite > 0
             ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite
             : 0;
@@ -113,9 +137,17 @@ class ExpoExecutorchFetcher implements ResourceFetcherAdapter {
         },
       );
 
-      const result = await task.downloadAsync();
-      const localUri = result?.uri ?? targetUri;
-      paths.push(stripFileScheme(localUri));
+      this.currentTask = task;
+      try {
+        await task.downloadAsync();
+      } finally {
+        this.currentTask = null;
+      }
+
+      const doneInfo = await FileSystem.getInfoAsync(targetUri);
+      this._completedFilesBytes += (doneInfo as any).size ?? 0;
+      this.cumulativeBytesWritten = this._completedFilesBytes;
+      paths.push(destPath);
       wasDownloaded.push(true);
       callback?.((index + 1) / total);
     }
@@ -155,26 +187,47 @@ function getModelResourceUris(modelId: LocalModel): string[] {
   );
 }
 
+function getModelResumeKeys(modelId: LocalModel): string[] {
+  const config = getSupportedModelConfig(modelId);
+  if (!config) return [];
+  return [config.modelSource, config.tokenizerSource, config.tokenizerConfigSource].map(
+    (s) => `${DOWNLOAD_RESUME_PREFIX}innerspace_model_${getFileNameForRemote(s)}`,
+  );
+}
+
+async function isModelDownloadingInBackground(modelId: LocalModel): Promise<boolean> {
+  return inFlightDownloads.has(modelId);
+}
+
 async function areModelResourcesDownloaded(modelId: LocalModel): Promise<boolean> {
   const uris = getModelResourceUris(modelId);
   if (!uris.length) return false;
   const fileInfo = await Promise.all(uris.map((uri) => FileSystem.getInfoAsync(uri)));
-  return fileInfo.every((info) => info.exists);
+  return fileInfo.every((info) => info.exists && !info.isDirectory && ((info as any).size ?? 0) > 0);
 }
 
 export async function getLocalModelDownloadStatus(modelId: LocalModel): Promise<LocalModelDownloadStatus> {
   const modelInfo = getLocalModelById(modelId);
-  const downloading = inFlightDownloads.has(modelId);
+  const downloading = await isModelDownloadingInBackground(modelId);
   const downloaded = modelInfo?.supported ? await areModelResourcesDownloaded(modelId) : false;
   const progress = downloaded ? 1 : (downloadProgress.get(modelId) ?? 0);
   return {
     downloaded,
     downloading,
     progress,
+    bytesWritten: downloadBytesWritten.get(modelId) ?? 0,
     supported: Boolean(modelInfo?.supported),
     available: isAvailable,
     error: downloadErrors.get(modelId),
   };
+}
+
+export async function cancelModelDownload(modelId: LocalModel): Promise<void> {
+  await executorchFetcher.pauseCurrentTask();
+  inFlightDownloads.delete(modelId);
+  downloadProgress.delete(modelId);
+  downloadBytesWritten.delete(modelId);
+  downloadErrors.delete(modelId);
 }
 
 export async function downloadLocalModel(
@@ -188,26 +241,30 @@ export async function downloadLocalModel(
   }
 
   const modelInfo = getLocalModelById(modelId);
-  if (!modelInfo) {
-    throw new Error('No local model selected.');
-  }
-  if (!modelInfo.supported) {
-    throw new Error(`${modelInfo.label} is not available in this build yet.`);
-  }
-  if (!isAvailable) {
-    throw new Error('The ExecuTorch runtime is not available on this device or build.');
-  }
+  if (!modelInfo) throw new Error('No offline helper selected.');
+  if (!modelInfo.supported) throw new Error(`${modelInfo.label} is not available in this build yet.`);
+  if (!isAvailable) throw new Error('The ExecuTorch runtime is not available on this device or build.');
 
   const config = getSupportedModelConfig(modelId);
-  if (!config) {
-    throw new Error('No supported local model is configured.');
-  }
+  if (!config) throw new Error('No offline helper configured.');
 
   ensureExecutorchInitialized();
   downloadErrors.delete(modelId);
 
+  // Always start fresh: clear stale resume data and delete any existing model files.
+  const resumeKeys = getModelResumeKeys(modelId);
+  await Promise.all(resumeKeys.map((k) => AsyncStorage.removeItem(k)));
+  const uris = getModelResourceUris(modelId);
+  await Promise.all(uris.map((uri) => FileSystem.deleteAsync(uri, { idempotent: true })));
+
+  const expectedTotalBytes = (modelInfo.sizeGB ?? 0) * 1e9;
+
   const promise = executorchFetcher.fetch(
-    (progress) => {
+    (rawProgress) => {
+      const bytes = executorchFetcher.cumulativeBytesWritten;
+      downloadBytesWritten.set(modelId, bytes);
+      const bytesProgress = expectedTotalBytes > 0 ? Math.min(bytes / expectedTotalBytes, 0.99) : 0;
+      const progress = Math.max(rawProgress, bytesProgress);
       downloadProgress.set(modelId, progress);
       onProgress?.(progress);
     },
@@ -215,6 +272,7 @@ export async function downloadLocalModel(
     config.tokenizerSource,
     config.tokenizerConfigSource,
   ).then(() => {
+    downloadBytesWritten.set(modelId, executorchFetcher.cumulativeBytesWritten);
     downloadProgress.set(modelId, 1);
     onProgress?.(1);
   }).catch((error: unknown) => {
@@ -236,9 +294,7 @@ async function getOrLoadModule(modelId: LocalModel): Promise<LLMModule | null> {
 
   ensureExecutorchInitialized();
 
-  if (activeModule && activeModelId === modelId) {
-    return activeModule;
-  }
+  if (activeModule && activeModelId === modelId) return activeModule;
 
   if (activeModule) {
     activeModule.delete();
@@ -267,7 +323,7 @@ export async function callLocalLLM(
     const modelInfo = getLocalModelById(modelId);
 
     if (!modelInfo) {
-      return { text: 'No local model selected.', error: 'no_model', isLocalModel: true };
+      return { text: 'No offline helper selected.', error: 'no_model', isLocalModel: true };
     }
 
     if (!modelInfo.supported) {
@@ -288,8 +344,15 @@ export async function callLocalLLM(
 
     const isDownloaded = await areModelResourcesDownloaded(modelId);
     if (!isDownloaded) {
+      if (await isModelDownloadingInBackground(modelId)) {
+        return {
+          text: 'Your offline AI assistant is still downloading. Please try again in a few minutes.',
+          error: 'model_downloading',
+          isLocalModel: true,
+        };
+      }
       return {
-        text: `The selected local model is not downloaded yet. Please download ${modelInfo.label} from onboarding or Settings before starting a local chat.`,
+        text: `Your offline helper isn't set up yet. Please set it up from onboarding or Settings before going offline.`,
         error: 'model_not_downloaded',
         isLocalModel: true,
       };
@@ -298,7 +361,7 @@ export async function callLocalLLM(
     const llm = await getOrLoadModule(modelId);
     if (!llm) {
       return {
-        text: 'No supported local model is configured. Please choose a supported local model in Settings.',
+        text: 'No offline helper is configured. Please choose a supported model in Settings.',
         error: 'unsupported_model',
         isLocalModel: true,
       };
@@ -311,9 +374,24 @@ export async function callLocalLLM(
     ]);
     return { text: response, isLocalModel: true };
   } catch (err: any) {
+    const msg = String(err?.message ?? err);
+    if (msg.includes('Failed to load model') || msg.includes('file_size_') || msg.includes('offset')) {
+      const modelIdRaw = await AsyncStorage.getItem(LOCAL_MODEL_KEY);
+      const mid = (modelIdRaw as LocalModel | null) ?? 'llama321b';
+      const uris = getModelResourceUris(mid);
+      await Promise.all([
+        ...getModelResumeKeys(mid).map((k) => AsyncStorage.removeItem(k)),
+        ...uris.map((uri) => FileSystem.deleteAsync(uri, { idempotent: true })),
+      ]);
+      return {
+        text: 'The model file appears to be incomplete. Please re-download it from Settings → Local AI.',
+        error: 'model_not_downloaded',
+        isLocalModel: true,
+      };
+    }
     return {
-      text: 'Local model encountered an error. Please try again or switch to a cloud provider in Settings.',
-      error: String(err?.message ?? err),
+      text: 'Your offline helper encountered an error. Please try again or switch to a cloud provider in Settings.',
+      error: 'local_model_error',
       isLocalModel: true,
     };
   }
@@ -324,9 +402,7 @@ export async function isLocalModelReady(): Promise<boolean> {
   try {
     const modelId = await AsyncStorage.getItem(LOCAL_MODEL_KEY);
     const selectedModel = LOCAL_MODELS.find((item) => item.id === modelId);
-    if (!selectedModel?.supported || !isAvailable) {
-      return false;
-    }
+    if (!selectedModel?.supported || !isAvailable) return false;
     return areModelResourcesDownloaded(selectedModel.id);
   } catch {
     return false;

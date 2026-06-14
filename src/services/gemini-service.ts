@@ -9,12 +9,34 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { checkSafety } from './safety-filter';
-import { AI_MODE_KEY, USER_PROFILE_KEY, AGE_GROUP_PROMPT } from '../constants/local-models';
+import { AI_MODE_KEY, LOCAL_RUNTIME_KEY, DEFAULT_LOCAL_RUNTIME, USER_PROFILE_KEY, AGE_GROUP_PROMPT } from '../constants/local-models';
 import { callLocalLLM } from './local-llm-service';
+import { callMediaPipeGemma2B } from './local-mediapipe-service';
 import type { UserProfile } from '../types';
 
 const AI_PROVIDER_KEY = '@innerspace:ai_provider';
 const API_KEY_STORE = 'innerspace_api_key';
+const ALL_PROVIDERS = ['gemini', 'openai', 'claude', 'groq'] as const;
+type AIProvider = (typeof ALL_PROVIDERS)[number];
+
+function providerApiKeyStore(provider: AIProvider): string {
+  return `${API_KEY_STORE}_${provider}`;
+}
+
+async function getProviderApiKey(provider: AIProvider): Promise<string | null> {
+  const providerSpecificKey = await SecureStore.getItemAsync(providerApiKeyStore(provider));
+  if (providerSpecificKey?.trim()) return providerSpecificKey.trim();
+
+  // Backwards compatibility with historical single-key storage.
+  const legacyKey = await SecureStore.getItemAsync(API_KEY_STORE);
+  if (legacyKey?.trim()) return legacyKey.trim();
+
+  return null;
+}
+
+function getProviderFailoverOrder(primaryProvider: AIProvider): AIProvider[] {
+  return [primaryProvider, ...ALL_PROVIDERS.filter((provider) => provider !== primaryProvider)];
+}
 
 /** Build a system prompt enriched with the user's age-group and name context */
 async function enrichSystemPrompt(base: string): Promise<string> {
@@ -44,6 +66,8 @@ export interface GeminiResponse {
   error?: string;
   isQuotaLimited?: boolean;
   cooldownUntil?: string;
+  providerUsed?: AIProvider | 'local';
+  fallbackTried?: AIProvider[];
 }
 
 function getNextQuotaResetAt(response?: Response): string {
@@ -77,6 +101,8 @@ export async function callGeminiAPI(
   agentSystemPrompt: string,
   conversationHistory: GeminiMessage[],
   accessToken: string,
+  imageBase64?: string,
+  imageMimeType?: string,
 ): Promise<GeminiResponse> {
   // Step 1: Safety check
   const safety = checkSafety(userMessage);
@@ -103,15 +129,21 @@ export async function callGeminiAPI(
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (!isApiKey) headers['Authorization'] = `Bearer ${accessToken}`;
 
+    const contents = messages.map((msg, idx) => {
+      const isLastUser = idx === messages.length - 1 && msg.role === 'user';
+      const parts: object[] = [{ text: msg.content }];
+      if (isLastUser && imageBase64) {
+        parts.push({ inline_data: { mime_type: imageMimeType ?? 'image/jpeg', data: imageBase64 } });
+      }
+      return { role: msg.role === 'user' ? 'user' : 'model', parts };
+    });
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: agentSystemPrompt }] },
-        contents: messages.map((msg) => ({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.content }],
-        })),
+        contents,
       }),
     });
 
@@ -184,6 +216,8 @@ export async function callAI(
   userMessage: string,
   agentSystemPrompt: string,
   conversationHistory: GeminiMessage[],
+  imageBase64?: string,
+  imageMimeType?: string,
 ): Promise<GeminiResponse> {
   const safety = checkSafety(userMessage);
   if (!safety.isSafe) {
@@ -198,19 +232,74 @@ export async function callAI(
 
   // Check if user has chosen local (on-device) mode
   const aiMode = await AsyncStorage.getItem(AI_MODE_KEY);
+
+  const providerRaw = await AsyncStorage.getItem(AI_PROVIDER_KEY);
+  const provider = (providerRaw as AIProvider) || 'gemini';
+
+  const callProvider = async (targetProvider: AIProvider, apiKey: string): Promise<GeminiResponse> => {
+    switch (targetProvider) {
+      case 'openai':
+        return callOpenAI(userMessage, enrichedPrompt, conversationHistory, apiKey, imageBase64, imageMimeType);
+      case 'claude':
+        return callClaude(userMessage, enrichedPrompt, conversationHistory, apiKey, imageBase64, imageMimeType);
+      case 'groq':
+        // Groq's llama-3.1-8b-instant is text-only — images are silently dropped
+        return callGroq(userMessage, enrichedPrompt, conversationHistory, apiKey);
+      default:
+        return callGeminiAPI(userMessage, enrichedPrompt, conversationHistory, apiKey, imageBase64, imageMimeType);
+    }
+  };
+
+  // ── Local model path ────────────────────────────────────────────────────────
   if (aiMode === 'local') {
-    const localResult = await callLocalLLM(userMessage, enrichedPrompt, conversationHistory);
-    return { text: localResult.text, isSafetyRedirect: false, error: localResult.error };
+    const localRuntime = (await AsyncStorage.getItem(LOCAL_RUNTIME_KEY)) ?? DEFAULT_LOCAL_RUNTIME;
+    const localResult = localRuntime === 'mediapipe'
+      ? await callMediaPipeGemma2B(userMessage, enrichedPrompt, conversationHistory)
+      : await callLocalLLM(userMessage, enrichedPrompt, conversationHistory);
+
+    // Local succeeded — return immediately (guard against empty text with no error)
+    if (!localResult.error) {
+      if (!localResult.text?.trim()) {
+        return { text: '', isSafetyRedirect: false, error: 'local_model_error', providerUsed: 'local' };
+      }
+      return { text: localResult.text, isSafetyRedirect: false, providerUsed: 'local' };
+    }
+
+    // Local failed — silently try cloud fallback if a key exists
+    const fallbackKey = await getProviderApiKey(provider);
+    if (fallbackKey) {
+      try {
+        const cloudResult = await callProvider(provider, fallbackKey);
+        if (!cloudResult.error) {
+          return { ...cloudResult, providerUsed: provider, error: 'local_used_cloud_fallback' };
+        }
+      } catch {
+        // ignore cloud error — fall through to local error response
+      }
+    }
+
+    // No cloud fallback available — return structured error so ChatScreen can show recovery UI
+    return {
+      text: '',
+      isSafetyRedirect: false,
+      error: localResult.error ?? 'local_model_error',
+      providerUsed: 'local',
+    };
   }
 
-  const [providerRaw, apiKey] = await Promise.all([
-    AsyncStorage.getItem(AI_PROVIDER_KEY),
-    SecureStore.getItemAsync(API_KEY_STORE),
-  ]);
+  // ── Cloud path ───────────────────────────────────────────────────────────────
+  const providerOrder = getProviderFailoverOrder(provider);
 
-  const provider = (providerRaw as 'gemini' | 'openai' | 'claude' | 'groq') || 'gemini';
+  const providerKeys = await Promise.all(
+    providerOrder.map(async (currentProvider) => {
+      const key = await getProviderApiKey(currentProvider);
+      return [currentProvider, key] as const;
+    }),
+  );
 
-  if (!apiKey) {
+  const configuredProviders = providerKeys.filter(([, key]) => Boolean(key));
+
+  if (!configuredProviders.length) {
     return {
       text: 'No AI key configured. Please add your API key in Settings to use AI features.',
       isSafetyRedirect: false,
@@ -218,16 +307,38 @@ export async function callAI(
     };
   }
 
-  switch (provider) {
-    case 'openai':
-      return callOpenAI(userMessage, enrichedPrompt, conversationHistory, apiKey);
-    case 'claude':
-      return callClaude(userMessage, enrichedPrompt, conversationHistory, apiKey);
-    case 'groq':
-      return callGroq(userMessage, enrichedPrompt, conversationHistory, apiKey);
-    default:
-      return callGeminiAPI(userMessage, enrichedPrompt, conversationHistory, apiKey);
+  const triedProviders: AIProvider[] = [];
+  let lastQuotaResult: GeminiResponse | null = null;
+
+  for (const [currentProvider, currentKey] of configuredProviders) {
+    const apiKey = currentKey as string;
+    triedProviders.push(currentProvider);
+
+    const result = await callProvider(currentProvider, apiKey);
+    if (!result.error || result.error !== 'quota_exceeded') {
+      return {
+        ...result,
+        providerUsed: currentProvider,
+        fallbackTried: triedProviders,
+      };
+    }
+
+    lastQuotaResult = result;
   }
+
+  if (lastQuotaResult) {
+    return {
+      ...lastQuotaResult,
+      text: 'All configured AI providers have reached quota right now. Please try again later or update quota in provider settings.',
+      fallbackTried: triedProviders,
+    };
+  }
+
+  return {
+    text: 'I could not respond right now. Please try again shortly.',
+    isSafetyRedirect: false,
+    error: 'provider_fallback_failed',
+  };
 }
 
 // ── OpenAI ───────────────────────────────────────────────────────────────────
@@ -237,11 +348,21 @@ async function callOpenAI(
   systemPrompt: string,
   history: GeminiMessage[],
   apiKey: string,
+  imageBase64?: string,
+  imageMimeType?: string,
 ): Promise<GeminiResponse> {
+  // Build the last user content — array form when image is attached, string otherwise
+  const lastUserContent: string | object[] = imageBase64
+    ? [
+        { type: 'text', text: userMessage },
+        { type: 'image_url', image_url: { url: `data:${imageMimeType ?? 'image/jpeg'};base64,${imageBase64}` } },
+      ]
+    : userMessage;
+
   const messages = [
     { role: 'system', content: systemPrompt },
     ...history.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-    { role: 'user', content: userMessage },
+    { role: 'user', content: lastUserContent },
   ];
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -271,10 +392,19 @@ async function callClaude(
   systemPrompt: string,
   history: GeminiMessage[],
   apiKey: string,
+  imageBase64?: string,
+  imageMimeType?: string,
 ): Promise<GeminiResponse> {
+  const lastUserContent: string | object[] = imageBase64
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: imageMimeType ?? 'image/jpeg', data: imageBase64 } },
+        { type: 'text', text: userMessage },
+      ]
+    : userMessage;
+
   const messages = [
     ...history.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-    { role: 'user', content: userMessage },
+    { role: 'user', content: lastUserContent },
   ];
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -333,4 +463,266 @@ async function callGroq(
   } catch (error) {
     return { text: 'Could not reach Groq. Please try again.', isSafetyRedirect: false, error: String(error) };
   }
+}
+
+// ── Provider capability queries ───────────────────────────────────────────────
+
+// ── Streaming ─────────────────────────────────────────────────────────────────
+
+async function readSSE(
+  response: Response,
+  onChunk: (text: string) => void,
+  extractText: (parsed: any) => string | null,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!response.body) {
+    // No readable stream support — parse body as JSON and return whole response
+    const data = await response.json();
+    const text = extractText(data) ?? '';
+    onChunk(text);
+    return text;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let fullText = '';
+  try {
+    while (true) {
+      if (signal?.aborted) break;
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const raw = trimmed.slice(5).trim();
+        if (!raw || raw === '[DONE]') continue;
+        try {
+          const chunk = extractText(JSON.parse(raw));
+          if (chunk) { fullText += chunk; onChunk(chunk); }
+        } catch { /* skip malformed chunk */ }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return fullText;
+}
+
+async function streamGemini(
+  userMessage: string, systemPrompt: string, history: GeminiMessage[],
+  apiKey: string, onChunk: (c: string) => void, signal?: AbortSignal,
+  imageBase64?: string, imageMimeType?: string,
+): Promise<GeminiResponse> {
+  const isApiKey = apiKey.startsWith('AIza');
+  const base = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent';
+  const url = isApiKey ? `${base}?key=${apiKey}&alt=sse` : `${base}?alt=sse`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!isApiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  const messages = [...history, { role: 'user' as const, content: userMessage }];
+  const contents = messages.map((msg, idx) => {
+    const isLast = idx === messages.length - 1 && msg.role === 'user';
+    const parts: object[] = [{ text: msg.content }];
+    if (isLast && imageBase64) parts.push({ inline_data: { mime_type: imageMimeType ?? 'image/jpeg', data: imageBase64 } });
+    return { role: msg.role === 'user' ? 'user' : 'model', parts };
+  });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST', headers, signal,
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents }),
+    });
+    if (!response.ok) {
+      const bodyText = await response.text();
+      if (isLikelyQuotaError(response.status, bodyText)) {
+        const cooldownUntil = getNextQuotaResetAt(response);
+        return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true, cooldownUntil };
+      }
+      return { text: '', isSafetyRedirect: false, error: `gemini_stream_${response.status}` };
+    }
+    const fullText = await readSSE(response, onChunk, (d) => d?.candidates?.[0]?.content?.parts?.[0]?.text ?? null, signal);
+    return { text: fullText, isSafetyRedirect: false };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
+    return { text: '', isSafetyRedirect: false, error: String(err) };
+  }
+}
+
+async function streamOpenAI(
+  userMessage: string, systemPrompt: string, history: GeminiMessage[],
+  apiKey: string, onChunk: (c: string) => void, signal?: AbortSignal,
+  imageBase64?: string, imageMimeType?: string,
+): Promise<GeminiResponse> {
+  const lastContent: string | object[] = imageBase64
+    ? [{ type: 'text', text: userMessage }, { type: 'image_url', image_url: { url: `data:${imageMimeType ?? 'image/jpeg'};base64,${imageBase64}` } }]
+    : userMessage;
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: lastContent },
+  ];
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', signal,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages, max_tokens: 1024, stream: true }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      if (isLikelyQuotaError(response.status, body)) return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true };
+      return { text: '', isSafetyRedirect: false, error: `openai_stream_${response.status}` };
+    }
+    const fullText = await readSSE(response, onChunk, (d) => d?.choices?.[0]?.delta?.content ?? null, signal);
+    return { text: fullText, isSafetyRedirect: false };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
+    return { text: '', isSafetyRedirect: false, error: String(err) };
+  }
+}
+
+async function streamClaude(
+  userMessage: string, systemPrompt: string, history: GeminiMessage[],
+  apiKey: string, onChunk: (c: string) => void, signal?: AbortSignal,
+  imageBase64?: string, imageMimeType?: string,
+): Promise<GeminiResponse> {
+  const lastContent: string | object[] = imageBase64
+    ? [{ type: 'image', source: { type: 'base64', media_type: imageMimeType ?? 'image/jpeg', data: imageBase64 } }, { type: 'text', text: userMessage }]
+    : userMessage;
+  const messages = [
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: lastContent },
+  ];
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 1024, system: systemPrompt, messages, stream: true }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      if (isLikelyQuotaError(response.status, body)) return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true };
+      return { text: '', isSafetyRedirect: false, error: `claude_stream_${response.status}` };
+    }
+    const fullText = await readSSE(response, onChunk, (d) => d?.type === 'content_block_delta' ? (d?.delta?.text ?? null) : null, signal);
+    return { text: fullText, isSafetyRedirect: false };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
+    return { text: '', isSafetyRedirect: false, error: String(err) };
+  }
+}
+
+async function streamGroq(
+  userMessage: string, systemPrompt: string, history: GeminiMessage[],
+  apiKey: string, onChunk: (c: string) => void, signal?: AbortSignal,
+): Promise<GeminiResponse> {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: userMessage },
+  ];
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', signal,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages, max_tokens: 1024, stream: true }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      if (isLikelyQuotaError(response.status, body)) return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true };
+      return { text: '', isSafetyRedirect: false, error: `groq_stream_${response.status}` };
+    }
+    const fullText = await readSSE(response, onChunk, (d) => d?.choices?.[0]?.delta?.content ?? null, signal);
+    return { text: fullText, isSafetyRedirect: false };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
+    return { text: '', isSafetyRedirect: false, error: String(err) };
+  }
+}
+
+/**
+ * Streaming AI call. Delivers text chunks as they arrive for cloud providers.
+ * Local model: no streaming — onChunk called once with full response when done.
+ * Returns final GeminiResponse for error/safety/quota handling.
+ */
+export async function callAIStream(
+  userMessage: string,
+  agentSystemPrompt: string,
+  conversationHistory: GeminiMessage[],
+  onChunk: (chunk: string) => void,
+  signal?: AbortSignal,
+  imageBase64?: string,
+  imageMimeType?: string,
+): Promise<GeminiResponse> {
+  const safety = checkSafety(userMessage);
+  if (!safety.isSafe) {
+    return { text: safety.redirectMessage ?? 'I cannot help with that.', isSafetyRedirect: true, safetyCategory: safety.category ?? undefined };
+  }
+
+  const enrichedPrompt = await enrichSystemPrompt(agentSystemPrompt);
+  const aiMode = await AsyncStorage.getItem(AI_MODE_KEY);
+  const providerRaw = await AsyncStorage.getItem(AI_PROVIDER_KEY);
+  const provider = (providerRaw as AIProvider) || 'gemini';
+
+  // Local model — no streaming capability, call normally and emit once
+  if (aiMode === 'local') {
+    const result = await callAI(userMessage, agentSystemPrompt, conversationHistory, imageBase64, imageMimeType);
+    if (!result.error && result.text) onChunk(result.text);
+    return { ...result, providerUsed: 'local' };
+  }
+
+  const providerOrder = getProviderFailoverOrder(provider);
+  const providerKeys = await Promise.all(providerOrder.map(async (p) => [p, await getProviderApiKey(p)] as const));
+  const configured = providerKeys.filter(([, k]) => Boolean(k));
+
+  if (!configured.length) {
+    return { text: 'No AI key configured. Please add your API key in Settings.', isSafetyRedirect: false, error: 'no_key' };
+  }
+
+  let lastResult: GeminiResponse | null = null;
+
+  for (const [currentProvider, currentKey] of configured) {
+    const key = currentKey as string;
+    let result: GeminiResponse;
+
+    switch (currentProvider) {
+      case 'openai': result = await streamOpenAI(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal, imageBase64, imageMimeType); break;
+      case 'claude': result = await streamClaude(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal, imageBase64, imageMimeType); break;
+      case 'groq':   result = await streamGroq(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal); break;
+      default:       result = await streamGemini(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal, imageBase64, imageMimeType);
+    }
+
+    if (result.error === 'aborted') return result;
+    if (!result.error || result.error !== 'quota_exceeded') return { ...result, providerUsed: currentProvider };
+    lastResult = result;
+  }
+
+  return lastResult ?? { text: '', isSafetyRedirect: false, error: 'provider_fallback_failed' };
+}
+
+/** Providers that support sending an image with the message */
+const VISION_PROVIDERS = new Set<string>(['gemini', 'openai', 'claude']);
+
+/**
+ * Returns the current AI capabilities based on stored settings.
+ * Call this on screen mount / focus to drive conditional UI.
+ */
+export async function getAICapabilities(): Promise<{
+  supportsVision: boolean;
+  supportsVoice: boolean;   // always true — voice I/O is device-side
+  supportsDocuments: boolean; // always true — text embedding works everywhere
+  aiMode: string;
+  provider: string;
+}> {
+  const aiMode = (await AsyncStorage.getItem(AI_MODE_KEY)) ?? 'cloud';
+  const provider = (await AsyncStorage.getItem(AI_PROVIDER_KEY)) ?? 'gemini';
+  return {
+    supportsVision: aiMode !== 'local' && VISION_PROVIDERS.has(provider),
+    supportsVoice: true,
+    supportsDocuments: true,
+    aiMode,
+    provider,
+  };
 }

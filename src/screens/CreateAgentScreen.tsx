@@ -6,15 +6,14 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  StatusBar as RNStatusBar,
   Share,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,11 +47,11 @@ export default function CreateAgentScreen() {
 
   async function handleCreate() {
     if (!name.trim()) {
-      Alert.alert('Missing name', 'Please give your agent a name.');
+      Alert.alert('What\'s their name?', 'Give your helper a name so you know who you\'re talking to.');
       return;
     }
     if (!expertise.trim()) {
-      Alert.alert('Missing description', 'Please describe what your agent knows about.');
+      Alert.alert('What do they know about?', 'Tell us a bit about what this helper is good at.');
       return;
     }
 
@@ -82,10 +81,10 @@ export default function CreateAgentScreen() {
       agents.push(newAgent);
       await AsyncStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(agents));
 
-      Alert.alert('Agent created!', `${emoji} ${name} is ready to chat.`, [
+      Alert.alert(`Meet ${name}! ${emoji}`, `Your new helper is ready. Say hello!`, [
         { text: 'Chat now', onPress: () => navigation.replace('Chat', { agentId: newAgent.id, customAgent: newAgent }) },
-        { text: 'Share agent', onPress: () => handleShareAgent(newAgent) },
-        { text: 'Done', onPress: () => navigation.goBack() },
+        { text: 'Share with a friend', onPress: () => handleShareAgent(newAgent) },
+        { text: 'Not yet', onPress: () => navigation.goBack() },
       ]);
     } finally {
       setSaving(false);
@@ -121,7 +120,7 @@ export default function CreateAgentScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="close" size={24} color="#FFFFFF" />
+            <Feather name="x" size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('custom_agent.title')}</Text>
           <View style={{ width: 36 }} />
@@ -152,6 +151,7 @@ export default function CreateAgentScreen() {
               onChangeText={setName}
               maxLength={40}
             />
+            <Text style={[styles.charCount, name.length >= 36 && styles.charCountWarning]}>{name.length}/40</Text>
           </Field>
 
           {/* Short description */}
@@ -178,7 +178,7 @@ export default function CreateAgentScreen() {
               maxLength={500}
               textAlignVertical="top"
             />
-            <Text style={styles.charCount}>{expertise.length}/500</Text>
+            <Text style={[styles.charCount, expertise.length >= 450 && styles.charCountWarning]}>{expertise.length}/500</Text>
           </Field>
 
           {/* Category */}
@@ -194,7 +194,7 @@ export default function CreateAgentScreen() {
                   {opt.label}
                 </Text>
                 {category === opt.key && (
-                  <Ionicons name="checkmark" size={16} color="#4A9EFF" />
+                  <Feather name="check" size={16} color="#4A9EFF" />
                 )}
               </TouchableOpacity>
             ))}
@@ -202,7 +202,7 @@ export default function CreateAgentScreen() {
 
           {/* Safety notice */}
           <View style={styles.safetyNotice}>
-            <Ionicons name="shield-checkmark" size={16} color="#4A9EFF" />
+            <Feather name="shield" size={16} color="#4A9EFF" />
             <Text style={styles.safetyText}>
               Your agent automatically inherits all safety rules. It cannot give medical, legal, or crisis advice, and will redirect appropriately.
             </Text>
@@ -252,7 +252,7 @@ function Field({ label, children, styles }: { label: string; children: React.Rea
 
 function createStyles(c: typeof DARK_COLORS) {
   return StyleSheet.create({
-  root: { flex: 1, backgroundColor: c.background, paddingTop: RNStatusBar.currentHeight ?? 0 },
+  root: { flex: 1, backgroundColor: c.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: c.text },
@@ -263,6 +263,7 @@ function createStyles(c: typeof DARK_COLORS) {
   input: { backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: c.text, fontSize: 15, borderWidth: 1, borderColor: c.border },
   multiline: { minHeight: 100, paddingTop: 12 },
   charCount: { fontSize: 11, color: c.textDim, textAlign: 'right', marginTop: 4 },
+  charCountWarning: { color: '#EF4444' },
   catOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 6, borderWidth: 1, borderColor: c.border },
   catOptionActive: { borderColor: c.accent, backgroundColor: c.accentBg },
   catOptionText: { fontSize: 15, color: c.textMuted },

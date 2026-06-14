@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  useColorScheme,
   AppState,
   I18nManager,
   Linking,
@@ -14,7 +15,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { I18nextProvider } from 'react-i18next';
 import i18n, { getDeviceLanguage, isRTL } from './src/i18n';
 import { useAuthStore } from './src/store/auth';
@@ -30,8 +31,10 @@ import {
 } from './src/services/app-lock';
 import { LEGAL_ACK_KEY, LEGAL_ACK_VERSION } from './src/constants/legal-notice';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleWeeklyDigest } from './src/services/notifications';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 import HomeScreen from './src/screens/HomeScreen';
@@ -44,19 +47,18 @@ import SetupFlowScreen from './src/screens/SetupFlowScreen';
 import JournalScreen from './src/screens/JournalScreen';
 import HabitsScreen from './src/screens/HabitsScreen';
 import DecisionScreen from './src/screens/DecisionScreen';
+import GoalsScreen from './src/screens/GoalsScreen';
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const Tab = createBottomTabNavigator();
 const RootStack = createStackNavigator();
 
-// Maps tab route names to their Ionicons glyph. Add a new entry when adding a tab.
-const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Home: 'home-outline',
-  Agents: 'grid-outline',
-  Journal: 'book-outline',
-  Habits: 'checkmark-circle-outline',
-  History: 'time-outline',
-  Settings: 'settings-outline',
+const TAB_ICON: Record<string, keyof typeof Feather.glyphMap> = {
+  Home:    'home',
+  Agents:  'users',
+  Journal: 'feather',
+  Habits:  'check-circle',
+  History: 'clock',
 };
 
 // AsyncStorage key shared with AgentsScreen — must stay in sync if ever renamed.
@@ -64,21 +66,38 @@ const CUSTOM_AGENTS_KEY = '@innerspace:custom_agents';
 
 function MainTabs() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 56 + insets.bottom;
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons
-            name={TAB_ICON[route.name] ?? 'ellipse-outline'}
-            size={size}
-            color={color}
-          />
+        tabBarIcon: ({ color, focused }) => (
+          <View style={{
+            width: 48,
+            height: 30,
+            borderRadius: 15,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: focused ? colors.accentBg : 'transparent',
+          }}>
+            <Feather
+              name={TAB_ICON[route.name] ?? 'circle'}
+              size={19}
+              color={color}
+              strokeWidth={focused ? 2.5 : 1.6}
+            />
+          </View>
         ),
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textDim,
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: 2 },
         tabBarStyle: {
           backgroundColor: colors.tabBar,
           borderTopColor: colors.tabBarBorder,
+          borderTopWidth: 1,
+          height: tabBarHeight,
+          paddingBottom: insets.bottom + 4,
+          paddingTop: 8,
         },
         headerShown: false,
       })}
@@ -89,10 +108,9 @@ function MainTabs() {
         component={AgentsScreen}
         options={{ tabBarLabel: 'Helpers' }}
       />
-      <Tab.Screen name="Journal" component={JournalScreen} />
+      <Tab.Screen name="Journal" component={JournalScreen} options={{ tabBarLabel: 'My Diary' }} />
       <Tab.Screen name="Habits" component={HabitsScreen} />
       <Tab.Screen name="History" component={HistoryScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }
@@ -105,6 +123,8 @@ function RootNavigator({ showSetup }: { showSetup: boolean }) {
       <RootStack.Screen name="Chat" component={ChatScreen} options={{ headerShown: false }} />
       <RootStack.Screen name="Decision" component={DecisionScreen} options={{ headerShown: false }} />
       <RootStack.Screen name="CreateAgent" component={CreateAgentScreen} options={{ headerShown: false, presentation: 'modal' }} />
+      <RootStack.Screen name="Goals" component={GoalsScreen} options={{ headerShown: false }} />
+      <RootStack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
       {!showSetup && <RootStack.Screen name="SetupFlow" component={SetupFlowScreen} />}
     </RootStack.Navigator>
   );
@@ -115,6 +135,15 @@ const ONBOARDING_DONE_KEY = '@innerspace:onboarding_done';
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
+  const isSystemDark = useColorScheme() === 'dark';
+  const lockBg = isSystemDark ? '#0A0F1E' : '#F4F7FF';
+  const lockSurface = isSystemDark ? '#111827' : '#FFFFFF';
+  const lockBorder = isSystemDark ? '#1F2937' : '#DDE5F2';
+  const lockTxt = isSystemDark ? '#FFFFFF' : '#0F172A';
+  const lockMuted = isSystemDark ? '#8B9CC8' : '#475569';
+  const lockAccent = isSystemDark ? '#4A9EFF' : '#1D4ED8';
+  const lockAccentBg = isSystemDark ? '#1A3A6B' : '#DBEAFE';
+
   const { setUser } = useAuthStore();
   const [ready, setReady] = useState(false);             // false = show splash loader
   const [onboardingDone, setOnboardingDone] = useState(false); // false = route to SetupFlow
@@ -249,21 +278,21 @@ export default function App() {
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0F1E', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator color="#4A9EFF" size="large" />
-        <StatusBar style="light" />
+      <View style={{ flex: 1, backgroundColor: lockBg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={lockAccent} size="large" />
+        <StatusBar style={isSystemDark ? "light" : "dark"} />
       </View>
     );
   }
 
   if (lockEnabled && isLocked) {
     return (
-      <View style={styles.lockRoot}>
-        <StatusBar style="light" />
-        <View style={styles.lockCard}>
+      <View style={[styles.lockRoot, { backgroundColor: lockBg }]}>
+        <StatusBar style={isSystemDark ? "light" : "dark"} />
+        <View style={[styles.lockCard, { backgroundColor: lockSurface, borderColor: lockBorder }]}>
           <Text style={styles.lockEmoji}>🔒</Text>
-          <Text style={styles.lockTitle}>App Locked</Text>
-          <Text style={styles.lockBody}>Unlock InnerSpace to continue.</Text>
+          <Text style={[styles.lockTitle, { color: lockTxt }]}>App Locked</Text>
+          <Text style={[styles.lockBody, { color: lockMuted }]}>Unlock InnerSpace to continue.</Text>
 
           {(lockMode === 'pin' || lockMode === 'both') && (
             <>
@@ -275,24 +304,24 @@ export default function App() {
                 }}
                 keyboardType="number-pad"
                 secureTextEntry
-                style={styles.pinInput}
+                style={[styles.pinInput, { backgroundColor: lockBg, borderColor: lockBorder, color: lockTxt }]}
                 placeholder="Enter PIN"
-                placeholderTextColor="#5A6478"
+                placeholderTextColor={lockMuted}
                 maxLength={6}
               />
-              <TouchableOpacity style={styles.unlockBtn} onPress={unlockWithPin} activeOpacity={0.85}>
-                <Text style={styles.unlockBtnText}>Unlock with PIN</Text>
+              <TouchableOpacity style={[styles.unlockBtn, { backgroundColor: lockAccentBg }]} onPress={unlockWithPin} activeOpacity={0.85}>
+                <Text style={[styles.unlockBtnText, { color: lockAccent }]}>Unlock with PIN</Text>
               </TouchableOpacity>
             </>
           )}
 
           {canTryBiometric && (
             <TouchableOpacity style={styles.bioBtn} onPress={tryBiometricUnlock} activeOpacity={0.85}>
-              <Text style={styles.bioBtnText}>Use Face/Fingerprint</Text>
+              <Text style={[styles.bioBtnText, { color: lockTxt }]}>Use Face/Fingerprint</Text>
             </TouchableOpacity>
           )}
 
-          {!!unlockError && <Text style={styles.unlockError}>{unlockError}</Text>}
+          {!!unlockError && <Text style={[styles.unlockError, { color: isSystemDark ? '#EF4444' : '#DC2626' }]}>{unlockError}</Text>}
         </View>
       </View>
     );
@@ -302,10 +331,12 @@ export default function App() {
     <ErrorBoundary>
       <I18nextProvider i18n={i18n}>
         <ThemeProvider>
-          <NavigationContainer>
-            <StatusBar style="light" />
-            <RootNavigator showSetup={!onboardingDone} />
-          </NavigationContainer>
+          <SafeAreaProvider>
+            <NavigationContainer>
+              <StatusBar style={isSystemDark ? "light" : "dark"} />
+              <RootNavigator showSetup={!onboardingDone} />
+            </NavigationContainer>
+          </SafeAreaProvider>
         </ThemeProvider>
       </I18nextProvider>
     </ErrorBoundary>
@@ -388,4 +419,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+
+
 
