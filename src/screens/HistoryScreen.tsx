@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,13 @@ import InnerSpaceLogo from '../components/InnerSpaceLogo';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureGet, secureSet } from '../services/storage-encryption';
 import { getAgentById } from '../constants/agents';
 import type { Conversation } from '../types';
 import { useTheme, DARK_COLORS } from '../context/ThemeContext';
 
 const CONVERSATIONS_KEY = '@innerspace:conversations';
+const PAGE_SIZE = 20;
 
 export default function HistoryScreen() {
   const navigation = useNavigation<any>();
@@ -25,6 +27,7 @@ export default function HistoryScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [query, setQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Reload every time tab comes into focus
   useFocusEffect(
@@ -34,7 +37,7 @@ export default function HistoryScreen() {
   );
 
   async function loadConversations() {
-    const raw = await AsyncStorage.getItem(CONVERSATIONS_KEY);
+    const raw = await secureGet(CONVERSATIONS_KEY);
     if (raw) {
       const parsed: Conversation[] = JSON.parse(raw);
       // Most recent first
@@ -53,7 +56,7 @@ export default function HistoryScreen() {
         onPress: async () => {
           const updated = conversations.filter((c) => c.id !== id);
           setConversations(updated);
-          await AsyncStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(updated));
+          await secureSet(CONVERSATIONS_KEY, JSON.stringify(updated));
         },
       },
     ]);
@@ -72,6 +75,10 @@ export default function HistoryScreen() {
       },
     ]);
   }
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [query]);
 
   const thisYear = new Date().getFullYear();
 
@@ -168,11 +175,23 @@ export default function HistoryScreen() {
       )}
 
       <FlatList
-        data={filtered}
+        data={filtered.slice(0, visibleCount)}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListFooterComponent={
+          filtered.length > visibleCount ? (
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={() => setVisibleCount((n) => n + PAGE_SIZE)}
+              accessibilityLabel="Load more conversations"
+              accessibilityRole="button"
+            >
+              <Text style={styles.loadMoreText}>Load more</Text>
+            </TouchableOpacity>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>💬</Text>
@@ -222,5 +241,7 @@ function createStyles(c: typeof DARK_COLORS) {
   emptyBody: { fontSize: 14, color: c.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.accentBg, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
   emptyBtnText: { fontSize: 15, fontWeight: '600', color: c.accent },
+  loadMoreBtn: { alignItems: 'center', paddingVertical: 14 },
+  loadMoreText: { fontSize: 14, color: c.accent, fontWeight: '600' },
   });
 }

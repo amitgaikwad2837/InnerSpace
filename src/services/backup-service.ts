@@ -63,15 +63,19 @@ export async function exportBackupAndShare(): Promise<{ shared: boolean; path: s
   const path = `${(FileSystem as any).documentDirectory}innerspace_backup_${Date.now()}.json`;
   await FileSystem.writeAsStringAsync(path, json);
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(path, {
-      mimeType: 'application/json',
-      dialogTitle: 'Export InnerSpace backup',
-    });
-    return { shared: true, path };
+  try {
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(path, {
+        mimeType: 'application/json',
+        dialogTitle: 'Export InnerSpace backup',
+      });
+      return { shared: true, path };
+    }
+    return { shared: false, path };
+  } finally {
+    // Remove the plaintext temp file from disk once sharing is done or fails
+    FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});
   }
-
-  return { shared: false, path };
 }
 
 export async function importBackupFromFile(): Promise<{ restoredKeys: number; cancelled: boolean }> {
@@ -87,7 +91,12 @@ export async function importBackupFromFile(): Promise<{ restoredKeys: number; ca
 
   const uri = picked.assets[0].uri;
   const raw = await FileSystem.readAsStringAsync(uri);
-  const parsed = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Backup file is not valid JSON');
+  }
   const payload = normalizePayload(parsed);
 
   if (!payload) {

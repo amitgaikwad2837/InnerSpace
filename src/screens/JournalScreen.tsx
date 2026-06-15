@@ -28,7 +28,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
-import Voice, { type SpeechResultsEvent, type SpeechErrorEvent } from '@react-native-voice/voice';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { secureGet, secureSet } from '../services/storage-encryption';
 import { callAI } from '../services/gemini-service';
 import type { JournalEntry, Habit } from '../types';
@@ -133,6 +133,41 @@ export default function JournalScreen() {
   const [saving, setSaving] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voicePartial, setVoicePartial] = useState('');
+
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+    setVoicePartial('');
+  });
+
+  useSpeechRecognitionEvent('result', (e) => {
+    const text = e.results[0]?.transcript?.trim();
+    if (e.isFinal) {
+      if (text) {
+        setContent((prev: string) => {
+          const sep = prev && !prev.endsWith('\n') && !prev.endsWith(' ') ? ' ' : '';
+          return prev + sep + text;
+        });
+      }
+      setVoicePartial('');
+    } else {
+      setVoicePartial(text ?? '');
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (e) => {
+    setIsListening(false);
+    setVoicePartial('');
+    if (e.error && e.error !== 'aborted') {
+      const msg = String(e.message ?? '');
+      if (!msg.includes('cancel') && !msg.includes('stopped')) {
+        Alert.alert('Voice error', 'Could not recognise speech. Try again or check microphone permissions.');
+      }
+    }
+  });
   const [analysisVisible, setAnalysisVisible] = useState(false);
   const [analysis, setAnalysis] = useState<JournalAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -166,78 +201,60 @@ export default function JournalScreen() {
   }
 
   useEffect(() => {
-    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
-      const text = e.value?.[0]?.trim();
-      if (text) {
-        setContent((prev: string) => {
-          const sep = prev && !prev.endsWith('\n') && !prev.endsWith(' ') ? ' ' : '';
-          return prev + sep + text;
-        });
-      }
-      setVoicePartial('');
-    };
-    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
-      setVoicePartial(e.value?.[0] ?? '');
-    };
-    Voice.onSpeechEnd = () => { setIsListening(false); setVoicePartial(''); };
-    Voice.onSpeechError = (e: SpeechErrorEvent) => {
-      setIsListening(false);
-      setVoicePartial('');
-      const msg = String((e.error as any)?.message ?? '');
-      if (msg && !msg.includes('cancel') && !msg.includes('stopped')) {
-        Alert.alert('Voice error', 'Could not recognise speech. Please try again.');
+    return () => {
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch (e) {
+        // ignore
       }
     };
-    return () => { Voice.destroy().catch(() => {}); };
   }, []);
+
+  function openAppSettings() {
+    Linking.openSettings().catch((err) => console.warn('Open settings error', err));
+  }
+
+  function showSettingsAlert(title: string, body: string) {
+    Alert.alert(title, body, [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Open Settings', onPress: openAppSettings },
+    ]);
+  }
 
   async function toggleVoice() {
     if (isListening) {
-      try { await Voice.stop(); } catch { /* ignore */ }
+      try {
+        await ExpoSpeechRecognitionModule.stop();
+      } catch (err) {
+        console.warn('Speech recognition stop error', err);
+      }
       setIsListening(false);
       setVoicePartial('');
       return;
     }
-    if (Platform.OS === 'android') {
-      const { PermissionsAndroid } = require('react-native');
-      const already = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-      if (!already) {
-        const result = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          {
-            title: 'Microphone access',
-            message: 'InnerSpace needs your microphone to record diary entries by voice.',
-            buttonPositive: 'Allow',
-            buttonNegative: 'Not now',
-          },
-        );
-        if (result !== PermissionsAndroid.RESULTS.GRANTED) return;
-      }
+
+    const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!perm.granted) {
+      showSettingsAlert(
+        'Microphone & Speech Recognition needed',
+        'InnerSpace needs microphone and speech recognition permissions to record diary entries by voice.',
+      );
+      return;
     }
+
     try {
       setIsListening(true);
-      await Voice.start('en-US');
-    } catch (err: any) {
+      await ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+        continuous: true,
+      });
+    } catch (err) {
+      console.warn('Speech recognition start error', err);
       setIsListening(false);
-      const msg: string = err?.message ?? '';
-      const isNullModule = msg.includes('null') || msg.includes('NativeModule') || msg.includes('RNVoice');
       Alert.alert(
         'Microphone unavailable',
-        isNullModule
-          ? 'Speech recognition service could not be reached. Try installing a speech recognition app.'
-          : 'Could not start voice input. Check that microphone permission is granted in Settings.',
-        isNullModule
-          ? [
-              { text: 'Not now', style: 'cancel' },
-              {
-                text: 'Find in Play Store',
-                onPress: () =>
-                  Linking.openURL('market://search?q=speech+recognition&c=apps').catch(() =>
-                    Linking.openURL('https://play.google.com/store/search?q=speech+recognition&c=apps'),
-                  ),
-              },
-            ]
-          : [{ text: 'OK' }],
+        'Could not start voice input. Check that microphone permission is granted in Settings.',
       );
     }
   }
@@ -594,19 +611,37 @@ Return exactly this JSON (no markdown):
               onPress={handleGenerateInsight}
               disabled={!content.trim() || generatingInsight}
               activeOpacity={0.8}
+              accessibilityLabel="Generate AI insight"
+              accessibilityRole="button"
             >
               {generatingInsight
                 ? <ActivityIndicator size="small" color={colors.accent} />
                 : <Feather name="zap" size={18} color={colors.accent} />}
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
-            <TouchableOpacity
-              style={[styles.micFab, isListening && styles.micFabActive]}
-              onPress={toggleVoice}
-              activeOpacity={0.8}
-            >
-              <Feather name={isListening ? 'mic-off' : 'mic'} size={21} color="#fff" />
-            </TouchableOpacity>
+            {!isListening ? (
+              <TouchableOpacity
+                style={styles.micFab}
+                onPress={toggleVoice}
+                activeOpacity={0.8}
+                accessibilityLabel="Start voice dictation"
+                accessibilityRole="button"
+              >
+                <Feather name="mic" size={16} color="#FFFFFF" />
+                <Text style={styles.micFabText}>Speak</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.micFab, styles.micFabActive]}
+                onPress={toggleVoice}
+                activeOpacity={0.8}
+                accessibilityLabel="Stop voice dictation"
+                accessibilityRole="button"
+              >
+                <Feather name="square" size={14} color="#FFFFFF" />
+                <Text style={styles.micFabText}>Stop</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.saveFab, (!content.trim() || saving) && { opacity: 0.45 }]}
               onPress={handleSave}
@@ -854,8 +889,9 @@ function createStyles(c: typeof DARK_COLORS) {
   voicePartialText: { paddingLeft: 36, paddingRight: 20, paddingBottom: 12, fontSize: 15, lineHeight: LINE_HEIGHT, color: c.textDim, fontStyle: 'italic' },
   diaryFabRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: c.background, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
   insightFab: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceAlt, borderWidth: 1, borderColor: c.accent },
-  micFab: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceAlt },
+  micFab: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.success, borderRadius: 24, paddingHorizontal: 18, paddingVertical: 11 },
   micFabActive: { backgroundColor: '#EF4444' },
+  micFabText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   saveFab: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.accent, borderRadius: 24, paddingHorizontal: 18, paddingVertical: 11 },
   saveFabText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   // Analysis modal

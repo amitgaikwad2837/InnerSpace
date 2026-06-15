@@ -25,7 +25,7 @@ import type { Agent, Habit, JournalEntry, Conversation, PinnedInsight } from '..
 import InnerSpaceLogo from '../components/InnerSpaceLogo';
 import AppTour, { TOUR_DONE_KEY } from '../components/AppTour';
 import { useTheme, DARK_COLORS } from '../context/ThemeContext';
-import { secureSet } from '../services/storage-encryption';
+import { secureGet, secureSet } from '../services/storage-encryption';
 
 const FIRST_RUN_BANNER_KEY = '@innerspace:first_run_banner_dismissed';
 const OPEN_DATES_KEY = '@innerspace:open_dates';
@@ -126,7 +126,7 @@ export default function HomeScreen() {
 
   const [streak, setStreak] = useState(0);
   const [xp, setXp] = useState(0);
-  const xpMax = 500;
+  const xpMax = getXpLevel(xp).next;
   const [crisisVisible, setCrisisVisible] = useState(false);
   const [selectedHelperIds, setSelectedHelperIds] = useState<string[]>([]);
   const [featuredHelperId, setFeaturedHelperId] = useState<string | null>(null);
@@ -159,9 +159,9 @@ export default function HomeScreen() {
         AsyncStorage.getItem(STREAK_KEY),
         AsyncStorage.getItem(XP_KEY),
         AsyncStorage.getItem(SELECTED_HELPERS_KEY),
-        AsyncStorage.getItem(CONVERSATIONS_KEY),
-        AsyncStorage.getItem(HABITS_KEY),
-        AsyncStorage.getItem(JOURNAL_KEY),
+        secureGet(CONVERSATIONS_KEY),
+        secureGet(HABITS_KEY),
+        secureGet(JOURNAL_KEY),
       ]);
       const visibleCatalog = aiMode === 'local'
         ? catalog.filter((agent) => agent.minimumAIMode !== 'cloud')
@@ -365,14 +365,19 @@ export default function HomeScreen() {
         ? visibleCatalog.filter((agent) => selected.includes(agent.id))
         : visibleCatalog;
       if (pool.length) {
-        const picked = pool[Math.floor(Math.random() * pool.length)];
+        // Seed by calendar day so the featured helper stays consistent for the whole day
+        const dayIndex = Math.floor(Date.now() / 86400000);
+        const picked = pool[dayIndex % pool.length];
         setFeaturedHelperId(picked.id);
       }
     }
     loadProgressAndPreferences();
   }, []);
 
-  const unlockedMilestones = MILESTONES.filter((m) => streak >= m.days);
+  const unlockedMilestones = useMemo(
+    () => MILESTONES.filter((m) => streak >= m.days),
+    [streak],
+  );
 
   async function handleShareAchievement() {
     try {
@@ -386,7 +391,7 @@ export default function HomeScreen() {
     }
   }
 
-  const heatmapDays = lastNDays(28);
+  const heatmapDays = useMemo(() => lastNDays(28), []);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -409,14 +414,15 @@ export default function HomeScreen() {
     setXp(next);
   }
 
-  // Task #23: lightweight offline probe
+  // Offline probe — uses Cloudflare DNS (1.1.1.1) which works in regions where Google is blocked.
+  // TODO: replace with @react-native-community/netinfo when installed for event-driven detection.
   useEffect(() => {
     let cancelled = false;
     async function checkOnline() {
       try {
         await Promise.race([
-          fetch('https://clients3.google.com/generate_204', { method: 'HEAD' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+          fetch('https://1.1.1.1', { method: 'HEAD' }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
         ]);
         if (!cancelled) setIsOffline(false);
       } catch {
@@ -424,7 +430,7 @@ export default function HomeScreen() {
       }
     }
     checkOnline();
-    const interval = setInterval(checkOnline, 30000);
+    const interval = setInterval(checkOnline, 60000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
@@ -483,7 +489,7 @@ export default function HomeScreen() {
   async function navigateToChat(agentId: string, forceNew?: boolean) {
     if (!forceNew) {
       try {
-        const raw = await AsyncStorage.getItem(CONVERSATIONS_KEY);
+        const raw = await secureGet(CONVERSATIONS_KEY);
         if (raw) {
           const all: Conversation[] = JSON.parse(raw);
           const existing = all.filter((c) => c.agentId === agentId && c.messages.length > 0);
@@ -513,7 +519,8 @@ export default function HomeScreen() {
     { icon: '💬', label: t('home.mode_talk_title'),    onPress: () => navigateToChat('confidence') },
     { icon: '✅', label: t('home.mode_habits_title'),  onPress: () => navigation.navigate('Habits') },
     { icon: '✍️', label: t('home.mode_reflect_title'), onPress: () => navigation.navigate('Journal') },
-    { icon: '🎯', label: t('home.mode_decide_title'),  onPress: () => navigation.navigate('Decision') },
+    { icon: '⚖️', label: t('home.mode_decide_title'),  onPress: () => navigation.navigate('Decision') },
+    { icon: '🌟', label: 'Goals',                      onPress: () => navigation.navigate('Goals') },
   ];
 
   return (
@@ -539,6 +546,8 @@ export default function HomeScreen() {
             style={styles.avatar}
             onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.8}
+            accessibilityLabel="Open settings"
+            accessibilityRole="button"
           >
             {profilePhoto ? (
               <Image source={{ uri: profilePhoto }} style={styles.avatarPhoto} />
@@ -624,8 +633,15 @@ export default function HomeScreen() {
               <Text style={styles.checkinTitle}>{t('home.checkin_title')}</Text>
               <Text style={styles.checkinPrompt}>{checkinPrompt}</Text>
               <View style={styles.moodRow}>
-                {MOOD_OPTIONS.map((m) => (
-                  <TouchableOpacity key={m} style={styles.moodBtn} onPress={() => handleCheckinDone(m)} activeOpacity={0.8}>
+                {MOOD_OPTIONS.map((m, i) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={styles.moodBtn}
+                    onPress={() => handleCheckinDone(m)}
+                    activeOpacity={0.8}
+                    accessibilityLabel={['Very sad', 'Sad', 'Neutral', 'Happy', 'Very happy'][i]}
+                    accessibilityRole="button"
+                  >
                     <Text style={styles.moodEmoji}>{m}</Text>
                   </TouchableOpacity>
                 ))}
@@ -640,7 +656,7 @@ export default function HomeScreen() {
         {/* Quick actions */}
         <View style={styles.quickActionsRow}>
           {QUICK_ACTIONS.map((a) => (
-            <TouchableOpacity key={a.label} style={styles.quickAction} onPress={a.onPress} activeOpacity={0.8}>
+            <TouchableOpacity key={a.label} style={styles.quickAction} onPress={a.onPress} activeOpacity={0.8} accessibilityLabel={a.label} accessibilityRole="button">
               <View style={styles.quickActionIcon}>
                 <Text style={styles.quickActionEmoji}>{a.icon}</Text>
               </View>
@@ -648,6 +664,19 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Crisis / emergency resources — always accessible */}
+        <TouchableOpacity
+          style={styles.crisisChip}
+          onPress={() => setCrisisVisible(true)}
+          activeOpacity={0.8}
+          accessibilityLabel="Get crisis support and emergency helpline numbers"
+          accessibilityRole="button"
+          accessibilityHint="Opens a list of crisis helplines you can call or text"
+        >
+          <Feather name="phone" size={12} color="#F87171" />
+          <Text style={styles.crisisChipText}>Need help now?</Text>
+        </TouchableOpacity>
 
         {/* My Helpers / Featured helper */}
         <View style={styles.sectionHeaderRow}>
@@ -763,9 +792,14 @@ export default function HomeScreen() {
             style={styles.reEntryCard}
             onPress={() => {
               setReEntryConversation(null);
-              navigation.navigate('Chat', { agentId: reEntryConversation.agentId });
+              navigation.navigate('Chat', {
+                agentId: reEntryConversation.agentId,
+                conversationId: reEntryConversation.id,
+              });
             }}
             activeOpacity={0.85}
+            accessibilityLabel="Welcome back — resume your last conversation"
+            accessibilityRole="button"
           >
             <View style={styles.reEntryLeft}>
               <Text style={styles.reEntryTitle}>Welcome back 👋</Text>
@@ -841,11 +875,22 @@ export default function HomeScreen() {
 
         <View style={styles.heatmapCard}>
           <Text style={styles.heatmapTitle}>{t('home.heatmap_title')}</Text>
-          <View style={styles.heatmapGrid}>
+          <View
+            style={styles.heatmapGrid}
+            accessibilityLabel={`Activity heatmap for the last 28 days. ${Object.values(activityByDay).filter(Boolean).length} active days.`}
+            accessibilityRole="image"
+          >
             {heatmapDays.map((d) => {
               const count = activityByDay[d] ?? 0;
               const level = count >= 3 ? 3 : count >= 2 ? 2 : count >= 1 ? 1 : 0;
-              return <View key={d} style={[styles.heatCell, level === 1 && styles.heat1, level === 2 && styles.heat2, level === 3 && styles.heat3]} />;
+              return (
+                <View
+                  key={d}
+                  style={[styles.heatCell, level === 1 && styles.heat1, level === 2 && styles.heat2, level === 3 && styles.heat3]}
+                  accessibilityLabel={count > 0 ? `${d}: ${count} ${count === 1 ? 'activity' : 'activities'}` : undefined}
+                  importantForAccessibility={count > 0 ? 'yes' : 'no'}
+                />
+              );
             })}
           </View>
           <Text style={styles.heatmapHint}>{t('home.heatmap_hint')}</Text>
@@ -860,14 +905,22 @@ export default function HomeScreen() {
           return (
             <View style={styles.moodChartCard}>
               <Text style={styles.moodChartTitle}>Mood — last 14 days</Text>
-              <View style={styles.moodChartRow}>
+              <View
+              style={styles.moodChartRow}
+              accessibilityLabel={`Mood trend for the last 14 days. Average: ${bars.filter(Boolean).length > 0 ? (bars.filter(Boolean).reduce((a, b) => a + b, 0) / bars.filter(Boolean).length).toFixed(1) : 'no data'} out of 5.`}
+              accessibilityRole="image"
+            >
                 {bars.map((score, i) => (
                   <View key={i} style={styles.moodBarWrap}>
-                    <View style={[
-                      styles.moodBar,
-                      { height: score > 0 ? score * 8 : 2 },
-                      score >= 4 ? styles.moodBarHigh : score >= 3 ? styles.moodBarMid : score > 0 ? styles.moodBarLow : styles.moodBarEmpty,
-                    ]} />
+                    <View
+                      style={[
+                        styles.moodBar,
+                        { height: score > 0 ? score * 8 : 2 },
+                        score >= 4 ? styles.moodBarHigh : score >= 3 ? styles.moodBarMid : score > 0 ? styles.moodBarLow : styles.moodBarEmpty,
+                      ]}
+                      accessibilityLabel={score > 0 ? `Day ${i + 1}: mood ${score} out of 5` : undefined}
+                      importantForAccessibility={score > 0 ? 'yes' : 'no'}
+                    />
                   </View>
                 ))}
               </View>
@@ -891,6 +944,9 @@ export default function HomeScreen() {
         style={styles.fab}
         onPress={() => setQuickCaptureVisible(true)}
         activeOpacity={0.85}
+        accessibilityLabel="Quick capture"
+        accessibilityRole="button"
+        accessibilityHint="Opens a text input to save a quick thought to your journal"
       >
         <Feather name="plus" size={28} color="#FFFFFF" />
       </TouchableOpacity>
@@ -901,6 +957,7 @@ export default function HomeScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setQuickCaptureVisible(false)}
+        accessibilityViewIsModal
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuickCaptureVisible(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.quickCaptureCard} onPress={() => {}}>
@@ -937,6 +994,7 @@ export default function HomeScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setCrisisVisible(false)}
+        accessibilityViewIsModal
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -1041,11 +1099,11 @@ function createStyles(c: typeof DARK_COLORS) {
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: c.textDim, letterSpacing: 0.8 },
   sectionLink: { fontSize: 12, color: c.accent, fontWeight: '600' },
-  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28, gap: 8 },
-  quickAction: { flex: 1, alignItems: 'center', gap: 8 },
-  quickActionIcon: { width: 58, height: 58, borderRadius: 18, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
-  quickActionEmoji: { fontSize: 26 },
-  quickActionLabel: { fontSize: 11, fontWeight: '600', color: c.textSecondary, textAlign: 'center' },
+  quickActionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28, gap: 4 },
+  quickAction: { flex: 1, alignItems: 'center', gap: 6 },
+  quickActionIcon: { width: 50, height: 50, borderRadius: 15, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
+  quickActionEmoji: { fontSize: 22 },
+  quickActionLabel: { fontSize: 10, fontWeight: '600', color: c.textSecondary, textAlign: 'center' },
   featuredCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1201,6 +1259,8 @@ function createStyles(c: typeof DARK_COLORS) {
   quickCaptureInput: { backgroundColor: c.surfaceAlt, borderRadius: 12, padding: 14, color: c.text, fontSize: 15, minHeight: 100, textAlignVertical: 'top', marginBottom: 14 },
   quickCaptureBtn: { backgroundColor: c.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   quickCaptureBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  crisisChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', gap: 6, marginBottom: 20, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#1A0A0A', borderWidth: 1, borderColor: '#3B1A1A' },
+  crisisChipText: { fontSize: 12, color: '#F87171', fontWeight: '500' },
   crisisBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1A0A0A', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#3B1A1A' },
   crisisBtnText: { fontSize: 14, color: c.danger, fontWeight: '500' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },

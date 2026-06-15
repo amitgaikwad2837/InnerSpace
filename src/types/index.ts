@@ -22,6 +22,7 @@ export interface Message {
   safetyCategory?: string;
   imageUri?: string;   // local URI for display in bubble
   fileName?: string;   // document name for display
+  isIncomplete?: boolean; // stream was cut short; a retry button is shown
 }
 
 export interface Conversation {

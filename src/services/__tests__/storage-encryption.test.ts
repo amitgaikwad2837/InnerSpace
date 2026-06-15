@@ -4,7 +4,7 @@
  * Tests for AES-256-GCM encryption of sensitive data
  */
 
-import { encryptData, decryptData, secureGet } from '../src/services/storage-encryption';
+import { encryptData, decryptData } from '../storage-encryption';
 
 describe('Storage Encryption (AES-256-GCM)', () => {
   describe('Basic Encryption/Decryption', () => {

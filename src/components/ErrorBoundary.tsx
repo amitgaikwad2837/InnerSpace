@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { reportError } from '../services/error-reporter';
 
 interface Props {
   children: React.ReactNode;
@@ -29,9 +30,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error details to console for debugging
-    console.error('Error Boundary caught an error:', error);
-    console.error('Error Info:', errorInfo.componentStack);
+    reportError(error, { componentStack: errorInfo.componentStack ?? '' });
   }
 
   handleReset = () => {

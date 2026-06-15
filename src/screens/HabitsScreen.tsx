@@ -343,6 +343,8 @@ export default function HabitsScreen() {
           onPress={() => handleComplete(item)}
           onLongPress={() => handleDelete(item.id)}
           activeOpacity={0.82}
+          accessibilityLabel={`${done ? 'Completed' : 'Mark complete'}: ${item.name}`}
+          accessibilityRole="button"
         >
           <View style={[styles.checkCircle, done && styles.checkCircleDone]}>
             {done && <Feather name="check" size={18} color="#FFFFFF" />}
@@ -383,6 +385,8 @@ export default function HabitsScreen() {
             onPress={() => setReminderPickerHabit(item)}
             hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
             style={styles.bellBtn}
+            accessibilityLabel={item.reminderTime ? `Change reminder for ${item.name}` : `Set reminder for ${item.name}`}
+            accessibilityRole="button"
           >
             <Feather
               name={item.reminderTime ? 'bell' : 'bell-off'}
@@ -430,6 +434,8 @@ export default function HabitsScreen() {
             style={styles.addBtn}
             onPress={() => navigation.navigate('Goals')}
             activeOpacity={0.8}
+            accessibilityLabel="View Goals"
+            accessibilityRole="button"
           >
             <Feather name="flag" size={18} color={colors.accent} />
           </TouchableOpacity>
@@ -437,6 +443,8 @@ export default function HabitsScreen() {
             style={styles.addBtn}
             onPress={handleSuggestHabits}
             activeOpacity={0.8}
+            accessibilityLabel="Get AI habit suggestions"
+            accessibilityRole="button"
           >
             <Feather name="zap" size={20} color={colors.accent} />
           </TouchableOpacity>
@@ -449,7 +457,7 @@ export default function HabitsScreen() {
           <View style={styles.weeklySummaryRow}>
             <Feather name="award" size={18} color={colors.accent} />
             <Text style={styles.weeklySummaryTitle}>{t('habits.weekly_title')}</Text>
-            <TouchableOpacity onPress={() => setWeeklySummary(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setWeeklySummary(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Dismiss weekly summary" accessibilityRole="button">
               <Feather name="x" size={16} color={colors.textDim} />
             </TouchableOpacity>
           </View>
@@ -470,7 +478,7 @@ export default function HabitsScreen() {
               <Text style={styles.missedAiText}>{missedAiMsg}</Text>
             )}
           </View>
-          <TouchableOpacity onPress={() => setMissedDismissed(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={() => setMissedDismissed(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Dismiss" accessibilityRole="button">
             <Feather name="x" size={16} color={colors.textDim} />
           </TouchableOpacity>
         </View>
@@ -683,6 +691,8 @@ export default function HabitsScreen() {
         style={styles.fab}
         onPress={() => setModalVisible(true)}
         activeOpacity={0.85}
+        accessibilityLabel="Add new habit"
+        accessibilityRole="button"
       >
         <Feather name="plus" size={26} color="#FFFFFF" />
       </TouchableOpacity>

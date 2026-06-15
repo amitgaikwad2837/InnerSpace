@@ -352,17 +352,25 @@ If you've had harmful thoughts, speaking with a counselor can help you find a he
   },
 };
 
+function matchesKeyword(normalizedMessage: string, keyword: string): boolean {
+  const nk = keyword.normalize('NFKC').toLowerCase();
+  // Multi-word phrases and hyphenated terms: substring match
+  if (nk.includes(' ') || nk.includes('-')) return normalizedMessage.includes(nk);
+  // Single tokens: require a word boundary at the start to prevent substring false positives
+  // e.g. "stocks" in "Goldilocks", "hate" in "whatever", "court" in "courtship"
+  const escaped = nk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}`, 'u').test(normalizedMessage);
+}
+
 export function checkSafety(userMessage: string): {
   isSafe: boolean;
   redirectMessage: string | null;
   category: string | null;
 } {
-  const lowerMessage = userMessage.toLowerCase();
+  const normalized = userMessage.normalize('NFKC').toLowerCase();
 
   for (const [category, rule] of Object.entries(SAFETY_RULES)) {
-    const triggered = rule.keywords.some((keyword) =>
-      lowerMessage.includes(keyword),
-    );
+    const triggered = rule.keywords.some((keyword) => matchesKeyword(normalized, keyword));
     if (triggered) {
       return {
         isSafe: false,
@@ -375,13 +383,9 @@ export function checkSafety(userMessage: string): {
   return { isSafe: true, redirectMessage: null, category: null };
 }
 
-/**
- * Check for adult/explicit content in text
- * Used to validate agents and agent descriptions
- */
 export function containsAdultContent(text: string): boolean {
-  const lowerText = text.toLowerCase();
+  const normalized = text.normalize('NFKC').toLowerCase();
   const adultKeywords = SAFETY_RULES.ADULT_CONTENT?.keywords || [];
-  return adultKeywords.some((keyword) => lowerText.includes(keyword));
+  return adultKeywords.some((keyword) => matchesKeyword(normalized, keyword));
 }
 

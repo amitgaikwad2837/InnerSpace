@@ -272,7 +272,14 @@ export async function downloadLocalModel(
     config.tokenizerSource,
     config.tokenizerConfigSource,
   ).then(() => {
-    downloadBytesWritten.set(modelId, executorchFetcher.cumulativeBytesWritten);
+    const actual = executorchFetcher.cumulativeBytesWritten;
+    // Validate file size: must be at least 80% of expected to catch truncated downloads
+    if (expectedTotalBytes > 0 && actual < expectedTotalBytes * 0.8) {
+      throw new Error(
+        `model_size_mismatch: expected ~${(expectedTotalBytes / 1e9).toFixed(1)} GB but only received ${(actual / 1e9).toFixed(2)} GB — the download may be incomplete`,
+      );
+    }
+    downloadBytesWritten.set(modelId, actual);
     downloadProgress.set(modelId, 1);
     onProgress?.(1);
   }).catch((error: unknown) => {

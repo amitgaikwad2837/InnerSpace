@@ -10,6 +10,7 @@ import {
   Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,14 +20,16 @@ import { saveUser, saveAccessToken } from '../services/storage-service';
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Create ONE Web OAuth client ID at:
+// Set GOOGLE_WEB_CLIENT_ID in your environment (see .env.example).
+// Create a Web OAuth client ID at:
 // https://console.cloud.google.com → APIs & Services → Credentials
 // → Create OAuth 2.0 Client ID → Web application
 // Authorised redirect URI: https://auth.expo.io/@<your-expo-username>/InnerSpace
 //
 // Also enable the Generative Language API for your project:
 // https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com
-const GOOGLE_WEB_CLIENT_ID = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+const GOOGLE_WEB_CLIENT_ID: string =
+  (Constants.expoConfig?.extra?.googleWebClientId as string | undefined) ?? '';
 
 const discovery = {
   authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -89,7 +92,7 @@ export default function SignInScreen() {
 
       // Test Gemini access — if 403 the user needs to enable the API
       const geminiTest = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
         {
           method: 'POST',
           headers: {
@@ -171,7 +174,7 @@ export default function SignInScreen() {
       <View style={styles.features}>
         {[
           { icon: '🤖', text: '35+ specialist AI agents' },
-          { icon: '🔒', text: 'All data stays on your device' },
+          { icon: '🔒', text: 'Journal & habits encrypted on device' },
           { icon: '🌍', text: 'Works in 10 languages' },
           { icon: '✨', text: 'Free — powered by Gemini' },
         ].map(({ icon, text }) => (
@@ -193,15 +196,20 @@ export default function SignInScreen() {
           <ActivityIndicator color="#1A1A2E" size="small" />
         ) : (
           <>
-            <MaterialCommunityIcons name="logo-google" size={20} color="#1A1A2E" style={styles.googleIcon} />
+            <MaterialCommunityIcons name="google" size={20} color="#1A1A2E" style={styles.googleIcon} />
             <Text style={styles.googleBtnText}>{t('auth.signin')}</Text>
           </>
         )}
       </TouchableOpacity>
 
+      <Text style={styles.therapyDisclaimer}>
+        Not a substitute for professional mental health care. If you are in crisis, contact a local helpline.
+      </Text>
+
       <Text style={styles.disclaimer}>
+        AI chats are processed by external providers (Gemini, etc.). Journal and habits are encrypted locally.
         By continuing you agree to our{' '}
-        <Text style={styles.disclaimerLink} onPress={() => Linking.openURL('https://amitgaikwad2837.github.io/InnerSpace/terms.html')}>Terms of Service</Text>
+        <Text style={styles.disclaimerLink} onPress={() => Linking.openURL('https://amitgaikwad2837.github.io/InnerSpace/terms.html')}>Terms</Text>
         {' '}&amp;{' '}
         <Text style={styles.disclaimerLink} onPress={() => Linking.openURL('https://amitgaikwad2837.github.io/InnerSpace/privacy.html')}>Privacy Policy</Text>.
       </Text>
@@ -286,10 +294,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A2E',
   },
-  disclaimer: {
-    marginTop: 20,
+  therapyDisclaimer: {
+    marginTop: 16,
     fontSize: 11,
-    color: '#4A5568',
+    color: '#7A8BA8',
+    textAlign: 'center',
+    lineHeight: 16,
+    fontStyle: 'italic',
+  },
+  disclaimer: {
+    marginTop: 8,
+    fontSize: 11,
+    color: '#7A8BA8',
     textAlign: 'center',
     lineHeight: 16,
   },

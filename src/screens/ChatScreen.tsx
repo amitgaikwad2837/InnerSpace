@@ -26,7 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
-import Voice, { type SpeechResultsEvent, type SpeechErrorEvent } from '@react-native-voice/voice';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets, setAudioModeAsync } from 'expo-audio';
 import Markdown from 'react-native-markdown-display';
 import { getAgentById, buildAgentSystemPrompt } from '../constants/agents';
@@ -267,6 +267,7 @@ export default function ChatScreen() {
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
   const chipGenId = useRef(0);
 
   // Follow-up chips
@@ -281,6 +282,38 @@ export default function ChatScreen() {
   // Voice input
   const [isListening, setIsListening] = useState(false);
   const [voicePartial, setVoicePartial] = useState('');
+
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+    setVoicePartial('');
+  });
+
+  useSpeechRecognitionEvent('result', (e) => {
+    const text = e.results[0]?.transcript?.trim();
+    if (e.isFinal) {
+      if (text) {
+        setInput(text);
+      }
+      setVoicePartial('');
+    } else {
+      setVoicePartial(text ?? '');
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (e) => {
+    setIsListening(false);
+    setVoicePartial('');
+    if (e.error && e.error !== 'aborted') {
+      const msg = String(e.message ?? '');
+      if (!msg.includes('cancel') && !msg.includes('stopped')) {
+        Alert.alert('Couldn\'t hear you', 'Try again or type your message.');
+      }
+    }
+  });
 
   // TTS output
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -331,34 +364,15 @@ export default function ChatScreen() {
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       Speech.stop();
       abortRef.current?.abort();
-    };
-  }, []);
-
-  // Wire up @react-native-voice/voice callbacks for local-mode STT
-  useEffect(() => {
-    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
-      const text = e.value?.[0]?.trim();
-      if (text) setInput(text);
-      setVoicePartial('');
-    };
-    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
-      setVoicePartial(e.value?.[0] ?? '');
-    };
-    Voice.onSpeechEnd = () => {
-      setIsListening(false);
-      setVoicePartial('');
-    };
-    Voice.onSpeechError = (e: SpeechErrorEvent) => {
-      setIsListening(false);
-      setVoicePartial('');
-      const msg = String((e.error as any)?.message ?? '');
-      if (msg && !msg.includes('cancel') && !msg.includes('stopped')) {
-        Alert.alert('Couldn\'t hear you', 'Try again or type your message.');
+      try {
+        ExpoSpeechRecognitionModule.abort();
+      } catch (e) {
+        // ignore
       }
     };
-    return () => { Voice.destroy().catch(() => {}); };
   }, []);
 
   useEffect(() => {
@@ -367,7 +381,7 @@ export default function ChatScreen() {
       if (raw) { try { setReactions(JSON.parse(raw)); } catch { } }
     });
     if (routeConversationId) {
-      AsyncStorage.getItem(CONVERSATIONS_KEY).then((raw) => {
+      secureGet(CONVERSATIONS_KEY).then((raw) => {
         if (!raw) return;
         try {
           const all: Conversation[] = JSON.parse(raw);
@@ -400,7 +414,7 @@ export default function ChatScreen() {
 
   // Session close card — intercept back navigation after a real conversation
   const [sessionCloseVisible, setSessionCloseVisible] = useState(false);
-  const [pendingNavAction, setPendingNavAction] = useState<any>(null);
+  const [pendingNavAction, setPendingNavAction] = useState<unknown>(null);
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => {
@@ -439,7 +453,7 @@ export default function ChatScreen() {
 
   async function saveConversation(updatedMessages: Message[], summary?: string) {
     try {
-      const raw = await AsyncStorage.getItem(CONVERSATIONS_KEY);
+      const raw = await secureGet(CONVERSATIONS_KEY);
       const all: Conversation[] = raw ? JSON.parse(raw) : [];
       const idx = all.findIndex((c) => c.id === conversationId.current);
       const existing = idx >= 0 ? all[idx] : null;
@@ -452,7 +466,7 @@ export default function ChatScreen() {
       };
       if (idx >= 0) all[idx] = convo;
       else all.push(convo);
-      await AsyncStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(all));
+      await secureSet(CONVERSATIONS_KEY, JSON.stringify(all));
     } catch { }
   }
 
@@ -578,8 +592,8 @@ export default function ChatScreen() {
       const candidates = voices.filter((v) => v.language?.startsWith(lang));
       // Prefer premium → enhanced → default
       const chosen =
-        candidates.find((v) => (v as any).quality === 'Premium') ??
-        candidates.find((v) => (v as any).quality === 'Enhanced') ??
+        candidates.find((v) => (v as { quality?: string }).quality === 'Premium') ??
+        candidates.find((v) => (v as { quality?: string }).quality === 'Enhanced') ??
         candidates.find((v) => v.language === locale) ??
         candidates[0];
       voiceCache.current[locale] = chosen?.identifier;
@@ -627,48 +641,27 @@ export default function ChatScreen() {
 
   async function startVoiceInput() {
     if (aiMode === 'local') {
-      if (Platform.OS === 'android') {
-        const { PermissionsAndroid } = require('react-native');
-        const already = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-        if (!already) {
-          const result = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-            {
-              title: 'Microphone access',
-              message: 'InnerSpace needs your microphone so you can speak to your helper.',
-              buttonPositive: 'Allow',
-              buttonNegative: 'Not now',
-            },
-          );
-          if (result !== PermissionsAndroid.RESULTS.GRANTED) return;
-        }
+      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!perm.granted) {
+        showSettingsAlert(
+          'Microphone & Speech Recognition needed',
+          'InnerSpace needs microphone and speech recognition permissions so you can speak to your helper.',
+        );
+        return;
       }
-      // Use device speech recognition — works offline if the user has an offline language pack installed
       try {
         const locale = SPEECH_LOCALE[language] ?? 'en-US';
-        await Voice.start(locale);
+        await ExpoSpeechRecognitionModule.start({
+          lang: locale,
+          interimResults: true,
+        });
         setIsListening(true);
         setVoicePartial('Listening…');
-      } catch (err: any) {
-        const msg: string = err?.message ?? '';
-        const isNullModule = msg.includes('null') || msg.includes('NativeModule') || msg.includes('RNVoice');
+      } catch (err) {
+        console.warn('Speech recognition start error', err);
         Alert.alert(
           'Microphone unavailable',
-          isNullModule
-            ? 'Speech recognition service could not be reached. Try installing a speech recognition app.'
-            : 'Could not start voice input. Check that microphone permission is granted in Settings.',
-          isNullModule
-            ? [
-                { text: 'Not now', style: 'cancel' },
-                {
-                  text: 'Find in Play Store',
-                  onPress: () =>
-                    Linking.openURL('market://search?q=speech+recognition&c=apps').catch(() =>
-                      Linking.openURL('https://play.google.com/store/search?q=speech+recognition&c=apps'),
-                    ),
-                },
-              ]
-            : [{ text: 'OK' }],
+          'Could not start speech recognition. Please make sure microphone permission is enabled in Settings.',
         );
       }
       return;
@@ -727,10 +720,13 @@ export default function ChatScreen() {
 
   async function stopVoiceInput() {
     if (aiMode === 'local') {
-      // Results arrive via Voice.onSpeechResults — just signal the engine to finalise
       setIsListening(false);
       setVoicePartial('');
-      try { await Voice.stop(); } catch {}
+      try {
+        await ExpoSpeechRecognitionModule.stop();
+      } catch (err) {
+        console.warn('Speech recognition stop error', err);
+      }
       return;
     }
 
@@ -753,7 +749,7 @@ export default function ChatScreen() {
       }
 
       const fileInfo = await FileSystem.getInfoAsync(uri);
-      const fileSize: number = (fileInfo as any).size ?? 0;
+      const fileSize: number = (fileInfo as { size?: number }).size ?? 0;
       if (!fileInfo.exists || fileSize < 1000) {
         Alert.alert('Recording too short', 'Please tap the mic, speak your message, then tap the stop button.');
         return;
@@ -845,7 +841,7 @@ export default function ChatScreen() {
 
   async function handleSend(text?: string, overrideHistory?: Message[]) {
     const userText = (text ?? input).trim();
-    if ((!userText && !attachment) || thinking) return;
+    if ((!userText && !attachment) || thinking || streamingId) return;
 
     const aiMode = await AsyncStorage.getItem(AI_MODE_KEY);
     if (aiMode === 'local' && agent?.minimumAIMode === 'cloud') {
@@ -885,6 +881,7 @@ export default function ChatScreen() {
     setMessages([...baseMessages, userMsg]);
     scrollToBottom();
     setThinking(true);
+    let accumulatedText = '';
 
     const placeholderId = `stream_${Date.now()}`;
     const controller = new AbortController();
@@ -906,7 +903,9 @@ export default function ChatScreen() {
         systemPrompt,
         history,
         (chunk) => {
-          setStreamingText((prev) => prev + chunk);
+          if (!isMountedRef.current) return;
+          accumulatedText += chunk;
+          setStreamingText(accumulatedText);
           scrollToBottom();
         },
         controller.signal,
@@ -914,6 +913,7 @@ export default function ChatScreen() {
         pendingAttachment?.type === 'image' ? (pendingAttachment.mimeType ?? 'image/jpeg') : undefined,
       );
 
+      if (!isMountedRef.current) return;
       setStreamingId(null);
       setStreamingText('');
 
@@ -999,7 +999,14 @@ export default function ChatScreen() {
     } catch {
       setStreamingId(null);
       setStreamingText('');
-      const errMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: t('chat.error'), timestamp: new Date() };
+      const partialText = accumulatedText.trim();
+      const errMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: partialText || t('chat.error'),
+        timestamp: new Date(),
+        isIncomplete: partialText.length > 0,
+      };
       setMessages((prev) => [...prev, errMsg]);
     } finally {
       setThinking(false);
@@ -1100,7 +1107,10 @@ export default function ChatScreen() {
               </View>
             </View>
           ) : (
-            <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+            <View
+              style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}
+              accessibilityLiveRegion={isStreaming ? 'polite' : undefined}
+            >
               {item.imageUri && (
                 <Image source={{ uri: item.imageUri }} style={styles.attachedImage} resizeMode="cover" />
               )}
@@ -1128,25 +1138,41 @@ export default function ChatScreen() {
               <TouchableOpacity
                 onPress={() => toggleReaction(item.id, 'up')}
                 style={[styles.msgActionBtn, reaction === 'up' && styles.msgActionBtnActive]}
+                accessibilityLabel="Mark as helpful"
+                accessibilityRole="button"
               >
                 <Feather name="thumbs-up" size={13} color={reaction === 'up' ? '#4A9EFF' : colors.textDim} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => toggleReaction(item.id, 'down')}
                 style={[styles.msgActionBtn, reaction === 'down' && styles.msgActionBtnActive]}
+                accessibilityLabel="Mark as not helpful"
+                accessibilityRole="button"
               >
                 <Feather name="thumbs-down" size={13} color={reaction === 'down' ? '#EF4444' : colors.textDim} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => speakMessage(item.content)} style={styles.msgActionBtn}>
+              <TouchableOpacity onPress={() => speakMessage(item.content)} style={styles.msgActionBtn} accessibilityLabel="Read aloud" accessibilityRole="button">
                 <Feather name="volume-2" size={13} color={colors.textDim} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { Clipboard.setString(item.content); }} style={styles.msgActionBtn}>
+              <TouchableOpacity onPress={() => { Clipboard.setString(item.content); }} style={styles.msgActionBtn} accessibilityLabel="Copy message" accessibilityRole="button">
                 <Feather name="copy" size={13} color={colors.textDim} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleRegenerate(item.id)} style={styles.msgActionBtn}>
+              <TouchableOpacity onPress={() => handleRegenerate(item.id)} style={styles.msgActionBtn} accessibilityLabel="Regenerate response" accessibilityRole="button">
                 <Feather name="refresh-cw" size={13} color={colors.textDim} />
               </TouchableOpacity>
             </View>
+          )}
+
+          {item.isIncomplete && (
+            <TouchableOpacity
+              style={styles.retryChip}
+              onPress={() => handleRegenerate(item.id)}
+              accessibilityLabel="Retry incomplete response"
+              accessibilityRole="button"
+            >
+              <Feather name="refresh-cw" size={12} color="#F5A623" />
+              <Text style={styles.retryChipText}>Response cut short — tap to retry</Text>
+            </TouchableOpacity>
           )}
 
           <View style={styles.msgFooter}>
@@ -1176,7 +1202,7 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityLabel="Go back" accessibilityRole="button">
           <Feather name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
 
@@ -1192,7 +1218,12 @@ export default function ChatScreen() {
         </View>
 
         {/* TTS toggle */}
-        <TouchableOpacity onPress={toggleTts} style={[styles.headerBtn, ttsEnabled && styles.headerBtnActive]}>
+        <TouchableOpacity
+          onPress={toggleTts}
+          style={[styles.headerBtn, ttsEnabled && styles.headerBtnActive]}
+          accessibilityLabel={ttsEnabled ? 'Disable read-aloud' : 'Enable read-aloud'}
+          accessibilityRole="button"
+        >
           <Feather name={isSpeaking ? 'volume-x' : 'volume-2'} size={18} color={ttsEnabled ? colors.accent : colors.textDim} />
         </TouchableOpacity>
       </View>
@@ -1396,14 +1427,14 @@ export default function ChatScreen() {
         {/* Character counter */}
         {showCharWarning && (
           <View style={styles.charCounter}>
-            <View style={[styles.charBar, { width: `${Math.min((charCount / 1500) * 100, 100)}%` as any }]} />
+            <View style={[styles.charBar, { width: `${Math.min((charCount / 1500) * 100, 100)}%` as `${number}%` }]} />
             <Text style={styles.charCountText}>{charCount}/1500</Text>
           </View>
         )}
 
         {/* Input bar */}
         <View style={styles.inputBar}>
-          <TouchableOpacity style={styles.inputIconBtn} onPress={() => setAttachMenuVisible(true)} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.inputIconBtn} onPress={() => setAttachMenuVisible(true)} activeOpacity={0.7} accessibilityLabel="Attach file or photo" accessibilityRole="button">
             <Feather name="paperclip" size={20} color={colors.textDim} />
           </TouchableOpacity>
 
@@ -1423,6 +1454,8 @@ export default function ChatScreen() {
             style={[styles.inputIconBtn, isListening && styles.inputIconBtnActive]}
             onPress={isListening ? stopVoiceInput : startVoiceInput}
             activeOpacity={0.7}
+            accessibilityLabel={isListening ? 'Stop voice input' : 'Start voice input'}
+            accessibilityRole="button"
           >
             <Feather name={isListening ? 'mic-off' : 'mic'} size={20} color={isListening ? '#EF4444' : colors.textDim} />
           </TouchableOpacity>
@@ -1430,7 +1463,9 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={[styles.sendBtn, (!input.trim() && !attachment) && styles.sendBtnDisabled]}
             onPress={() => handleSend()}
-            disabled={(!input.trim() && !attachment) || thinking}
+            disabled={(!input.trim() && !attachment) || thinking || !!streamingId}
+            accessibilityLabel="Send message"
+            accessibilityRole="button"
             activeOpacity={0.8}
           >
             <Feather name="send" size={18} color={(input.trim() || attachment) ? colors.text : '#4A5568'} />
@@ -1599,6 +1634,8 @@ function createStyles(c: typeof DARK_COLORS) {
     msgActions: { flexDirection: 'row', gap: 2, marginTop: 4, marginLeft: 4 },
     msgActionBtn: { padding: 6, borderRadius: 10 },
     msgActionBtnActive: { backgroundColor: c.surfaceAlt },
+    retryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 6, marginLeft: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, backgroundColor: '#2A1A03', borderColor: '#7C4A03' },
+    retryChipText: { fontSize: 12, color: '#F5A623' },
     timestamp: { fontSize: 10, color: c.textDim, marginTop: 2, marginHorizontal: 4 },
     msgFooter: { flexDirection: 'row', alignItems: 'center' },
     chipsContainer: { paddingHorizontal: 4 },

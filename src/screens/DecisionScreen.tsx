@@ -184,6 +184,8 @@ export default function DecisionScreen() {
           onPress={showBack ? () => setView('history') : () => navigation.goBack()}
           style={styles.backBtn}
           activeOpacity={0.7}
+          accessibilityLabel={showBack ? 'Back to history' : 'Go back'}
+          accessibilityRole="button"
         >
           <Feather name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>

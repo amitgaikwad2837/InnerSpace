@@ -3,8 +3,6 @@ package com.innerspace.app
 import android.app.Application
 import android.content.res.Configuration
 
-import com.facebook.react.PackageList
-import com.wenkesj.voice.VoicePackage
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.ReactPackage
@@ -20,11 +18,7 @@ class MainApplication : Application(), ReactApplication {
   override val reactHost: ReactHost by lazy {
     ExpoReactHostFactory.getDefaultReactHost(
       context = applicationContext,
-      packageList = PackageList(this).packages.apply {
-        // Add VoicePackage only if autolinking hasn't already included it,
-        // to avoid the duplicate-registration that nulls out RNVoice at runtime.
-        if (!any { it is VoicePackage }) add(VoicePackage())
-      }
+      packageList = com.facebook.react.PackageList(this).packages
     )
   }
 

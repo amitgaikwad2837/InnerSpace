@@ -140,6 +140,13 @@ All PRs are automatically validated:
 - No hardcoded API keys or secrets
 - Use SecureStore for sensitive data
 
+### Local AI Integrations (MediaPipe / Native)
+- Keep JS routing and safety checks in `src/services/*`.
+- Put native MediaPipe bridge code in a local Expo module (planned path: `modules/mediapipe-llm/`).
+- Do not call native inference directly from screens; use service adapters.
+- Preserve pre-send and post-response safety filtering for every provider.
+- Keep provider fallback behavior unchanged for cloud mode.
+
 ### Naming
 - Components: PascalCase (`HomeScreen.tsx`)
 - Functions/variables: camelCase (`handleSave()`)

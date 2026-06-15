@@ -22,18 +22,21 @@
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.InnerSpace"
+      "package": "com.innerspace.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow InnerSpace to use your microphone so you can speak to your helper.",
+          "speechRecognitionPermission": "Allow InnerSpace to recognize your speech."
+        }
+      ]
+    ],
     "extra": {
       "legalNoticeMarkdownUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/docs/legal-notice.md",
       "agentsCatalogUrl": "https://raw.githubusercontent.com/amitgaikwad2837/InnerSpace/main/.github/agents.json",

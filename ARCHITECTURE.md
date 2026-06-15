@@ -39,8 +39,9 @@
 │  │  ┌─────────────────────────────────────────────────┐ │   │
 │  │  │  SecureStore (Hardware-backed encryption)      │ │   │
 │  │  │  • API keys (Gemini, OpenAI, Claude, Groq)    │ │   │
+│  │  │  • OAuth access token (Google sign-in)        │ │   │
 │  │  │  • App PIN hash                                │ │   │
-│  │  │  • Encryption master key                       │ │   │
+│  │  │  • AES-256-GCM master encryption key          │ │   │
 │  │  └─────────────────────────────────────────────────┘ │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                               │
@@ -87,8 +88,9 @@
 
 ### 3. Multi-Provider AI Architecture
 - **Why:** No vendor lock-in; user controls which AI provider to use
-- **Implementation:** Provider adapters + quota failover for cloud providers; local runtime abstraction for ExecuTorch and planned MediaPipe. All four cloud providers (Gemini, OpenAI, Claude, Groq) are implemented and selectable in Settings.
-- **Location:** `src/services/gemini-service.ts`, `src/services/ai-provider-adapter.ts`, `src/services/local-mediapipe-service.ts`
+- **Implementation:** Provider adapters + quota failover. Models: `gemini-2.0-flash`, `gpt-4o-mini`, `claude-haiku-4-5-20251001`, `llama-3.1-8b-instant`. All selectable in Settings.
+- **Key behaviours:** 20-message sliding context window; in-memory API key cache (avoids repeated SecureStore I/O); `max_tokens: 4096` across all providers; system prompt enriched with user profile on each call
+- **Location:** `src/services/gemini-service.ts`
 - **Tradeoff:** More code paths to test; user must manage API keys
 
 ### 3.1 MediaPipe Gemma 2B Path (Scaffolded)
@@ -98,10 +100,11 @@
 - **Reference:** `docs/MEDIAPIPE_GEMMA2B_INTEGRATION.md`
 
 ### 4. Encryption by Default
-- **Why:** Sensitive data (journal, habits) is explicitly encrypted
-- **Implementation:** AES-256-GCM via Web Crypto API; key in SecureStore
-- **Location:** `src/services/storage-encryption.ts`
-- **Tradeoff:** Performance overhead (~100ms per encrypt/decrypt); graceful fallback to plaintext if crypto unavailable
+- **Why:** All personally sensitive data is encrypted at rest; no plaintext journals, habits, or conversations on disk
+- **Implementation:** AES-256-GCM via Web Crypto API; master key stored in hardware-backed SecureStore; OAuth access token also in SecureStore
+- **Scope:** Journal entries, habit data, conversations, decisions, custom helper descriptions
+- **Location:** `src/services/storage-encryption.ts`, `src/services/storage-service.ts`
+- **Tradeoff:** ~100ms overhead per encrypt/decrypt; graceful plaintext fallback if `crypto.subtle` unavailable
 
 ### 5. Catalog-Driven Helpers Marketplace
 - **Why:** Add/update helpers without requiring an app rebuild
@@ -179,7 +182,7 @@ Safety Filter (post-response)
     ├─ Invalid response? → Show generic fallback, discard
     └─ Valid? → Continue
     ↓
-Save AI response locally (AsyncStorage, encrypted)
+Save conversation locally (AES-256-GCM encrypted via secureSet)
     ↓
 Show response in ChatScreen
     ↓
@@ -343,8 +346,8 @@ await decryptData(ciphertext)
 - Cached in memory (_cachedKey) for performance
 - Fallback to plaintext gracefully if crypto unavailable
 
-**Encrypted Data:**
-- Conversations (if enabled by user)
+**Encrypted Data (always on):**
+- Conversations
 - Habit entries
 - Journal entries + moods
 - Decisions
@@ -411,17 +414,18 @@ When API returns 429 (rate limit):
 
 ```typescript
 // Pre-send filter
-checkSafety(userMessage, 'user')
-→ Lowercase & tokenize
-→ Check against each rule's keywords
-→ If match: return { blocked: true, category: 'CRISIS' }
-→ If no match: return { blocked: false }
+checkSafety(userMessage)
+→ NFKC normalize + lowercase (catches unicode-obfuscated keywords)
+→ Word-boundary prefix match (\b) for single tokens — prevents
+   substring false positives (e.g. "hate" inside "whatever")
+→ Substring match for multi-word phrases and hyphenated terms
+→ If match: return { isSafe: false, redirectMessage: '...', category: 'CRISIS_SELF_HARM' }
+→ If no match: return { isSafe: true, redirectMessage: null, category: null }
 
-// Post-response filter
-checkSafety(aiResponse, 'assistant')
-→ Ensure AI doesn't claim to be human
-→ Verify no rule violations in response
-→ If suspect: return redacted response or fallback
+// Post-response filter — same function, same rules
+checkSafety(aiResponse)
+→ Catches any rule-violating content in the AI reply
+→ If blocked: replace with a safe fallback message
 ```
 
 ---

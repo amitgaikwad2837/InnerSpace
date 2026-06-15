@@ -36,9 +36,21 @@ export async function hasAppPin(): Promise<boolean> {
   return Boolean(pin);
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  const aBytes = Array.from(a).map((c) => c.charCodeAt(0));
+  const bBytes = Array.from(b).map((c) => c.charCodeAt(0));
+  let diff = aBytes.length ^ bBytes.length;
+  const len = Math.max(aBytes.length, bBytes.length);
+  for (let i = 0; i < len; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return diff === 0;
+}
+
 export async function verifyAppPin(pin: string): Promise<boolean> {
   const saved = await SecureStore.getItemAsync(LOCK_PIN_KEY);
-  return Boolean(saved && pin === saved);
+  if (!saved) return false;
+  return timingSafeEqual(pin, saved);
 }
 
 export async function clearAppPin(): Promise<void> {

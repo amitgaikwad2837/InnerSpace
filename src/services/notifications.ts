@@ -10,6 +10,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { secureGet } from './storage-encryption';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import type { Conversation } from '../types';
 
@@ -34,14 +35,19 @@ async function requestPermission(): Promise<boolean> {
 
 function getISOWeek(): string {
   const now = new Date();
-  const jan1 = new Date(now.getFullYear(), 0, 1);
-  const week = Math.ceil(((now.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-  return `${now.getFullYear()}-W${week}`;
+  // ISO 8601: week 1 contains the year's first Thursday.
+  // Shift so Monday=0, find Thursday of that week, then compute week number.
+  const dayOfWeek = (now.getDay() + 6) % 7; // Mon=0 … Sun=6
+  const thursday = new Date(now);
+  thursday.setDate(now.getDate() - dayOfWeek + 3);
+  const jan4 = new Date(thursday.getFullYear(), 0, 4); // Jan 4 is always in week 1
+  const week = 1 + Math.round((thursday.getTime() - jan4.getTime()) / 604800000);
+  return `${thursday.getFullYear()}-W${week}`;
 }
 
 async function buildDigestBody(): Promise<string> {
   try {
-    const raw = await AsyncStorage.getItem(CONVERSATIONS_KEY);
+    const raw = await secureGet(CONVERSATIONS_KEY);
     if (!raw) return "You're building something great. Check in this week!";
 
     const all: Conversation[] = JSON.parse(raw);
@@ -82,7 +88,7 @@ export async function scheduleWeeklyDigest(): Promise<void> {
     // Cancel any previously scheduled weekly digest
     const existing = await Notifications.getAllScheduledNotificationsAsync();
     for (const n of existing) {
-      if ((n.content.data as any)?.type === 'weekly_digest') {
+      if ((n.content.data as Record<string, unknown>)?.type === 'weekly_digest') {
         await Notifications.cancelScheduledNotificationAsync(n.identifier);
       }
     }
@@ -130,15 +136,14 @@ export async function scheduleHabitReminder(
 
     const [hour, minute] = timeStr.split(':').map(Number);
 
-    const trigger =
+    const trigger: Notifications.NotificationTriggerInput =
       frequency === 'daily'
-        ? { type: SchedulableTriggerInputTypes.DAILY, hour, minute, repeats: true }
+        ? { type: SchedulableTriggerInputTypes.DAILY, hour, minute }
         : {
             type: SchedulableTriggerInputTypes.WEEKLY,
             weekday: new Date().getDay() + 1, // 1=Sunday … 7=Saturday
             hour,
             minute,
-            repeats: true,
           };
 
     const id = await Notifications.scheduleNotificationAsync({
@@ -186,7 +191,7 @@ export async function scheduleHelperReadyNotification(
 
     const existing = await Notifications.getAllScheduledNotificationsAsync();
     for (const n of existing) {
-      if ((n.content.data as any)?.type === 'helper_ready') {
+      if ((n.content.data as Record<string, unknown>)?.type === 'helper_ready') {
         await Notifications.cancelScheduledNotificationAsync(n.identifier);
       }
     }

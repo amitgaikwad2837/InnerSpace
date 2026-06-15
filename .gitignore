@@ -48,3 +48,6 @@ yarn-error.*
 /android/.gradle/
 /android/local.properties
 /android/**/*.log
+
+# Android debug signing key
+debug.keystore

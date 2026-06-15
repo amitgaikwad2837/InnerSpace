@@ -23,15 +23,40 @@ function providerApiKeyStore(provider: AIProvider): string {
   return `${API_KEY_STORE}_${provider}`;
 }
 
+// In-memory key cache — avoids a SecureStore (hardware disk I/O) read on every request.
+// Cleared on logout via clearApiKeyCache().
+const apiKeyCache = new Map<AIProvider, string>();
+
+export function clearApiKeyCache(): void {
+  apiKeyCache.clear();
+}
+
 async function getProviderApiKey(provider: AIProvider): Promise<string | null> {
+  const cached = apiKeyCache.get(provider);
+  if (cached) return cached;
+
   const providerSpecificKey = await SecureStore.getItemAsync(providerApiKeyStore(provider));
-  if (providerSpecificKey?.trim()) return providerSpecificKey.trim();
+  if (providerSpecificKey?.trim()) {
+    apiKeyCache.set(provider, providerSpecificKey.trim());
+    return providerSpecificKey.trim();
+  }
 
   // Backwards compatibility with historical single-key storage.
   const legacyKey = await SecureStore.getItemAsync(API_KEY_STORE);
-  if (legacyKey?.trim()) return legacyKey.trim();
+  if (legacyKey?.trim()) {
+    apiKeyCache.set(provider, legacyKey.trim());
+    return legacyKey.trim();
+  }
 
   return null;
+}
+
+const MAX_HISTORY_MESSAGES = 20;
+
+/** Keep only the most recent messages to avoid exceeding provider token limits. */
+function trimHistory(history: GeminiMessage[]): GeminiMessage[] {
+  if (history.length <= MAX_HISTORY_MESSAGES) return history;
+  return history.slice(history.length - MAX_HISTORY_MESSAGES);
 }
 
 function getProviderFailoverOrder(primaryProvider: AIProvider): AIProvider[] {
@@ -114,18 +139,19 @@ export async function callGeminiAPI(
     };
   }
 
-  // Step 2: Build request with system prompt + history
+  const enrichedPrompt = await enrichSystemPrompt(agentSystemPrompt);
+
+  // Step 2: Build request with system prompt + trimmed history
   const messages: GeminiMessage[] = [
-    ...conversationHistory,
+    ...trimHistory(conversationHistory),
     { role: 'user', content: userMessage },
   ];
 
   try {
     // API keys start with "AIza"; everything else is treated as an OAuth Bearer token
     const isApiKey = accessToken.startsWith('AIza');
-    const url = isApiKey
-      ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${accessToken}`
-      : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+    const base = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    const url = isApiKey ? `${base}?key=${accessToken}` : base;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (!isApiKey) headers['Authorization'] = `Bearer ${accessToken}`;
 
@@ -142,7 +168,7 @@ export async function callGeminiAPI(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: agentSystemPrompt }] },
+        systemInstruction: { parts: [{ text: enrichedPrompt }] },
         contents,
       }),
     });
@@ -236,17 +262,19 @@ export async function callAI(
   const providerRaw = await AsyncStorage.getItem(AI_PROVIDER_KEY);
   const provider = (providerRaw as AIProvider) || 'gemini';
 
+  const trimmedHistory = trimHistory(conversationHistory);
+
   const callProvider = async (targetProvider: AIProvider, apiKey: string): Promise<GeminiResponse> => {
     switch (targetProvider) {
       case 'openai':
-        return callOpenAI(userMessage, enrichedPrompt, conversationHistory, apiKey, imageBase64, imageMimeType);
+        return callOpenAI(userMessage, enrichedPrompt, trimmedHistory, apiKey, imageBase64, imageMimeType);
       case 'claude':
-        return callClaude(userMessage, enrichedPrompt, conversationHistory, apiKey, imageBase64, imageMimeType);
+        return callClaude(userMessage, enrichedPrompt, trimmedHistory, apiKey, imageBase64, imageMimeType);
       case 'groq':
         // Groq's llama-3.1-8b-instant is text-only — images are silently dropped
-        return callGroq(userMessage, enrichedPrompt, conversationHistory, apiKey);
+        return callGroq(userMessage, enrichedPrompt, trimmedHistory, apiKey);
       default:
-        return callGeminiAPI(userMessage, enrichedPrompt, conversationHistory, apiKey, imageBase64, imageMimeType);
+        return callGeminiAPI(userMessage, enrichedPrompt, trimmedHistory, apiKey, imageBase64, imageMimeType);
     }
   };
 
@@ -368,7 +396,7 @@ async function callOpenAI(
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: 'gpt-4o-mini', messages, max_tokens: 1024 }),
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages, max_tokens: 4096 }),
     });
     if (!response.ok) {
       const bodyText = await response.text();
@@ -414,7 +442,7 @@ async function callClaude(
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 1024, system: systemPrompt, messages }),
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 4096, system: systemPrompt, messages }),
     });
     if (!response.ok) {
       const bodyText = await response.text();
@@ -448,7 +476,7 @@ async function callGroq(
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages, max_tokens: 1024 }),
+      body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages, max_tokens: 4096 }),
     });
     if (!response.ok) {
       const bodyText = await response.text();
@@ -472,7 +500,7 @@ async function callGroq(
 async function readSSE(
   response: Response,
   onChunk: (text: string) => void,
-  extractText: (parsed: any) => string | null,
+  extractText: (parsed: unknown) => string | null,
   signal?: AbortSignal,
 ): Promise<string> {
   if (!response.body) {
@@ -517,7 +545,7 @@ async function streamGemini(
   imageBase64?: string, imageMimeType?: string,
 ): Promise<GeminiResponse> {
   const isApiKey = apiKey.startsWith('AIza');
-  const base = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent';
+  const base = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent';
   const url = isApiKey ? `${base}?key=${apiKey}&alt=sse` : `${base}?alt=sse`;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (!isApiKey) headers['Authorization'] = `Bearer ${apiKey}`;
@@ -537,13 +565,15 @@ async function streamGemini(
     });
     if (!response.ok) {
       const bodyText = await response.text();
+      if (response.status === 401) return { text: '', isSafetyRedirect: false, error: 'auth_expired' };
       if (isLikelyQuotaError(response.status, bodyText)) {
         const cooldownUntil = getNextQuotaResetAt(response);
         return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true, cooldownUntil };
       }
       return { text: '', isSafetyRedirect: false, error: `gemini_stream_${response.status}` };
     }
-    const fullText = await readSSE(response, onChunk, (d) => d?.candidates?.[0]?.content?.parts?.[0]?.text ?? null, signal);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fullText = await readSSE(response, onChunk, (d) => (d as any)?.candidates?.[0]?.content?.parts?.[0]?.text ?? null, signal);
     return { text: fullText, isSafetyRedirect: false };
   } catch (err: any) {
     if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
@@ -568,14 +598,15 @@ async function streamOpenAI(
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST', signal,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: 'gpt-4o-mini', messages, max_tokens: 1024, stream: true }),
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages, max_tokens: 4096, stream: true }),
     });
     if (!response.ok) {
       const body = await response.text();
       if (isLikelyQuotaError(response.status, body)) return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true };
       return { text: '', isSafetyRedirect: false, error: `openai_stream_${response.status}` };
     }
-    const fullText = await readSSE(response, onChunk, (d) => d?.choices?.[0]?.delta?.content ?? null, signal);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fullText = await readSSE(response, onChunk, (d) => (d as any)?.choices?.[0]?.delta?.content ?? null, signal);
     return { text: fullText, isSafetyRedirect: false };
   } catch (err: any) {
     if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
@@ -606,7 +637,8 @@ async function streamClaude(
       if (isLikelyQuotaError(response.status, body)) return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true };
       return { text: '', isSafetyRedirect: false, error: `claude_stream_${response.status}` };
     }
-    const fullText = await readSSE(response, onChunk, (d) => d?.type === 'content_block_delta' ? (d?.delta?.text ?? null) : null, signal);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fullText = await readSSE(response, onChunk, (d) => (d as any)?.type === 'content_block_delta' ? ((d as any)?.delta?.text ?? null) : null, signal);
     return { text: fullText, isSafetyRedirect: false };
   } catch (err: any) {
     if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
@@ -627,14 +659,15 @@ async function streamGroq(
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST', signal,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages, max_tokens: 1024, stream: true }),
+      body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages, max_tokens: 4096, stream: true }),
     });
     if (!response.ok) {
       const body = await response.text();
       if (isLikelyQuotaError(response.status, body)) return { text: '', isSafetyRedirect: false, error: 'quota_exceeded', isQuotaLimited: true };
       return { text: '', isSafetyRedirect: false, error: `groq_stream_${response.status}` };
     }
-    const fullText = await readSSE(response, onChunk, (d) => d?.choices?.[0]?.delta?.content ?? null, signal);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fullText = await readSSE(response, onChunk, (d) => (d as any)?.choices?.[0]?.delta?.content ?? null, signal);
     return { text: fullText, isSafetyRedirect: false };
   } catch (err: any) {
     if (err?.name === 'AbortError') return { text: '', isSafetyRedirect: false, error: 'aborted' };
@@ -681,6 +714,7 @@ export async function callAIStream(
     return { text: 'No AI key configured. Please add your API key in Settings.', isSafetyRedirect: false, error: 'no_key' };
   }
 
+  const trimmedHistory = trimHistory(conversationHistory);
   let lastResult: GeminiResponse | null = null;
 
   for (const [currentProvider, currentKey] of configured) {
@@ -688,13 +722,15 @@ export async function callAIStream(
     let result: GeminiResponse;
 
     switch (currentProvider) {
-      case 'openai': result = await streamOpenAI(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal, imageBase64, imageMimeType); break;
-      case 'claude': result = await streamClaude(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal, imageBase64, imageMimeType); break;
-      case 'groq':   result = await streamGroq(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal); break;
-      default:       result = await streamGemini(userMessage, enrichedPrompt, conversationHistory, key, onChunk, signal, imageBase64, imageMimeType);
+      case 'openai': result = await streamOpenAI(userMessage, enrichedPrompt, trimmedHistory, key, onChunk, signal, imageBase64, imageMimeType); break;
+      case 'claude': result = await streamClaude(userMessage, enrichedPrompt, trimmedHistory, key, onChunk, signal, imageBase64, imageMimeType); break;
+      case 'groq':   result = await streamGroq(userMessage, enrichedPrompt, trimmedHistory, key, onChunk, signal); break;
+      default:       result = await streamGemini(userMessage, enrichedPrompt, trimmedHistory, key, onChunk, signal, imageBase64, imageMimeType);
     }
 
     if (result.error === 'aborted') return result;
+    // Auth expiry should not trigger failover — propagate immediately so UI can re-prompt login
+    if (result.error === 'auth_expired') return { ...result, providerUsed: currentProvider };
     if (!result.error || result.error !== 'quota_exceeded') return { ...result, providerUsed: currentProvider };
     lastResult = result;
   }
