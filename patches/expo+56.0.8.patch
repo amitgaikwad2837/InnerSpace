@@ -1,5 +1,5 @@
 diff --git a/android/build.gradle b/android/build.gradle
-index 1234567..abcdefg 100644
+index 0000001..fffffff 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
 @@ -55,3 +55,32 @@ dependencies { dependencyHandler ->
