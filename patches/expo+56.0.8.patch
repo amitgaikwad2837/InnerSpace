@@ -2,7 +2,7 @@ diff --git a/android/build.gradle b/android/build.gradle
 index 0000001..fffffff 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
-@@ -55,3 +55,32 @@ dependencies { dependencyHandler ->
+@@ -55,3 +55,33 @@ dependencies { dependencyHandler ->
    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
    testImplementation 'org.robolectric:robolectric:4.16'
  }

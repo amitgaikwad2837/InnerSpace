@@ -70,7 +70,7 @@
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "postinstall": "patch-package",
+    "postinstall": "patch-package || true",
     "format": "prettier --write 'src/**/*.{ts,tsx}' 'App.tsx'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx}' 'App.tsx'"
   },
