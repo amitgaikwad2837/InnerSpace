@@ -87,9 +87,15 @@
 
 ### 3. Multi-Provider AI Architecture
 - **Why:** No vendor lock-in; user controls which AI provider to use
-- **Implementation:** Abstract AI interface; concrete implementations for each provider
-- **Location:** `src/services/gemini-service.ts` (extensible for others)
+- **Implementation:** Provider adapters + quota failover for cloud providers; local runtime abstraction for ExecuTorch and planned MediaPipe. All four cloud providers (Gemini, OpenAI, Claude, Groq) are implemented and selectable in Settings.
+- **Location:** `src/services/gemini-service.ts`, `src/services/ai-provider-adapter.ts`, `src/services/local-mediapipe-service.ts`
 - **Tradeoff:** More code paths to test; user must manage API keys
+
+### 3.1 MediaPipe Gemma 2B Path (Scaffolded)
+- **Status:** Planned / scaffolded (not active in runtime yet)
+- **Goal:** Run Gemma 2B fully on-device through a native MediaPipe bridge
+- **Boundary:** JS routing in services, native inference in a local Expo module (`modules/mediapipe-llm/`)
+- **Reference:** `docs/MEDIAPIPE_GEMMA2B_INTEGRATION.md`
 
 ### 4. Encryption by Default
 - **Why:** Sensitive data (journal, habits) is explicitly encrypted
@@ -128,6 +134,7 @@ App.tsx (Root)
 │       │   └── Settings → SettingsScreen
 │       ├── Chat (Modal Stack) → ChatScreen
 │       ├── Decision (Modal Stack) → DecisionScreen
+│       ├── Goals (Stack) → GoalsScreen (navigated from HabitsScreen header)
 │       └── CreateAgent (Modal) → CreateAgentScreen
 │
 └── AppLock (if lockEnabled === true)
@@ -219,6 +226,23 @@ Add to journal history
 (Sunday 09:00) Generate weekly digest summary
     ↓
 Schedule local notification
+```
+
+### Voice Input Flow (ChatScreen / JournalScreen)
+
+```
+User taps microphone icon
+    ↓
+@react-native-voice/voice: Voice.start(locale)
+    ├─ Android 11+: requires com.google.android.googlequicksearchbox visible
+    │  (declared in AndroidManifest.xml <queries> block)
+    └─ Error? → Alert with link to Play Store speech recognition search
+    ↓
+Voice.onSpeechPartialResults → show interim transcript in input field
+    ↓
+Voice.onSpeechResults → finalise transcript
+    ↓
+(ChatScreen only) Text injected into message input; user can edit before sending
 ```
 
 ### Deep Link Import (Custom Helper) Flow
@@ -343,10 +367,10 @@ ChatScreen calls: callAI(userMessage, agentPrompt, history)
 gemini-service.ts:
 ├── Read AI_PROVIDER_KEY from AsyncStorage
 │   ├─ 'gemini' → callGeminiAPI()
-│   ├─ 'openai' → callOpenAI() [not yet implemented]
-│   ├─ 'claude' → callClaude() [not yet implemented]
-│   ├─ 'groq' → callGroq() [not yet implemented]
-│   └─ 'local' → callLocalLLM()
+│   ├─ 'openai' → callOpenAI()
+│   ├─ 'claude' → callClaude()
+│   ├─ 'groq'   → callGroq()
+│   └─ 'local'  → callLocalLLM() (react-native-executorch)
 ├── Fetch API key from SecureStore
 ├── Enrich system prompt with user age/name context
 ├── Send request with conversation history
@@ -506,7 +530,7 @@ checkSafety(aiResponse, 'assistant')
 3. **Peer-to-Peer Sharing** — Encrypted sharing of decisions/journal entries with trusted users
 4. **Local Vector Database** — On-device embedding search for better journal retrieval
 5. **Advanced Analytics** — Privacy-preserving on-device analytics dashboard
-6. **Voice I/O** — Speech-to-text input, text-to-speech responses
+6. **Voice Output (TTS)** — Text-to-speech playback of AI responses (STT input already implemented via `@react-native-voice/voice`)
 
 ---
 

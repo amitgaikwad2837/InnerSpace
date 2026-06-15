@@ -28,6 +28,7 @@
       --text:        #f0f4ff;
       --muted:       #8892a4;
       --green:       #22c55e;
+      --teal:        #34d399;
       --grad:        linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
       --font:        'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
@@ -170,6 +171,178 @@
     }
     .proof-item span { font-size: 0.85rem; color: var(--muted); }
 
+    /* ── App Preview / Phone Mockups ── */
+    .preview-section {
+      background: radial-gradient(ellipse 90% 60% at 50% 50%, rgba(99,102,241,0.07) 0%, transparent 70%),
+        var(--surface);
+      overflow: hidden;
+    }
+    .mockups-row {
+      display: flex; align-items: flex-end; gap: 1.25rem;
+      justify-content: center; padding: 3rem 0 0.5rem;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .mockups-row::-webkit-scrollbar { display: none; }
+    .mockup-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+      flex-shrink: 0;
+    }
+    .mockup-wrap:nth-child(1) { transform: rotate(-3deg) translateY(16px); }
+    .mockup-wrap:nth-child(2) { transform: rotate(-1deg) translateY(6px); }
+    .mockup-wrap:nth-child(3) { transform: rotate(1deg) translateY(6px); }
+    .mockup-wrap:nth-child(4) { transform: rotate(3deg) translateY(16px); }
+    .mockup-label {
+      font-size: 0.75rem; color: var(--muted); font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .phone {
+      width: 170px;
+      background: linear-gradient(155deg, #252b3d 0%, #1a1f2e 100%);
+      border-radius: 28px; padding: 12px 9px 16px;
+      border: 1.5px solid rgba(255,255,255,0.11);
+      box-shadow:
+        0 28px 72px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(255,255,255,0.04),
+        inset 0 1px 0 rgba(255,255,255,0.07);
+      position: relative;
+    }
+    .phone-notch {
+      position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+      width: 46px; height: 5px; background: #0a0d18; border-radius: 3px;
+    }
+    .phone-btn-l {
+      position: absolute; left: -3px; top: 88px;
+      width: 3px; height: 22px; background: rgba(255,255,255,0.09); border-radius: 2px;
+    }
+    .phone-btn-l2 {
+      position: absolute; left: -3px; top: 116px;
+      width: 3px; height: 22px; background: rgba(255,255,255,0.09); border-radius: 2px;
+    }
+    .phone-btn-r {
+      position: absolute; right: -3px; top: 102px;
+      width: 3px; height: 30px; background: rgba(255,255,255,0.09); border-radius: 2px;
+    }
+    .phone-screen {
+      background: #07090f; border-radius: 19px; height: 322px;
+      overflow: hidden; position: relative;
+    }
+
+    /* micro UI helpers */
+    .m-sb {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 3px 9px; font-size: 5px; color: rgba(255,255,255,0.3); height: 14px;
+    }
+    .m-nav {
+      background: #0f1421; padding: 5px 9px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .m-nav-back { font-size: 8px; color: rgba(255,255,255,0.5); margin-right: 2px; }
+    .m-nav-title { font-size: 7.5px; font-weight: 700; color: #f0f4ff; flex: 1; }
+    .m-nav-icon { font-size: 10px; }
+    .m-body { padding: 7px 9px; }
+    .m-label { font-size: 5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-bottom: 3px; }
+    .m-title { font-size: 9px; font-weight: 700; color: #f0f4ff; margin-bottom: 1px; }
+    .m-sub { font-size: 5.5px; color: var(--muted); }
+    .m-card {
+      background: #161d2e; border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px; padding: 5px 7px; margin-bottom: 4px;
+    }
+    .m-bar-track { background: #1e2840; height: 3px; border-radius: 2px; margin: 3px 0; }
+    .m-bar-fill { background: linear-gradient(90deg, #6366f1, #ec4899); height: 100%; border-radius: 2px; }
+    .m-badge {
+      display: inline-flex; align-items: center; gap: 2px;
+      background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.25);
+      border-radius: 8px; padding: 2px 5px; font-size: 5.5px; color: #f59e0b;
+      margin-top: 3px;
+    }
+    .m-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 5px 0; }
+    .m-mode-btn {
+      background: #161d2e; border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 7px; padding: 5px; text-align: center;
+    }
+    .m-mode-emoji { font-size: 10px; line-height: 1; }
+    .m-mode-name { font-size: 5px; color: #c0c8d8; margin-top: 1px; }
+
+    /* bubble messages */
+    .m-bubble-user {
+      align-self: flex-end; background: linear-gradient(135deg,#6366f1,#8b5cf6);
+      border-radius: 10px 10px 2px 10px; padding: 5px 7px;
+      max-width: 120px; font-size: 6px; color: #fff; line-height: 1.45;
+      margin-bottom: 5px; margin-left: auto;
+    }
+    .m-bubble-ai {
+      background: #161d2e; border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 2px 10px 10px 10px; padding: 5px 7px;
+      max-width: 130px; font-size: 6px; color: #d8e0f0; line-height: 1.45;
+      margin-bottom: 5px;
+    }
+    .m-habit-chip {
+      margin: 4px 9px;
+      background: rgba(13,47,40,0.9); border: 1px solid #34d399;
+      border-radius: 16px; padding: 5px 9px;
+      display: flex; align-items: center; gap: 4px;
+      font-size: 6px; color: #34d399; font-weight: 600;
+    }
+    .m-input-bar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: #0f1421; border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 5px 9px; display: flex; align-items: center; gap: 4px;
+    }
+    .m-input-pill {
+      flex: 1; background: #161d2e; border-radius: 10px;
+      padding: 3px 7px; font-size: 5.5px; color: rgba(255,255,255,0.25);
+    }
+    .m-mic { font-size: 9px; }
+
+    /* habits */
+    .m-habit-row {
+      border-radius: 7px; padding: 5px 7px;
+      display: flex; align-items: center; gap: 5px; margin-bottom: 3px;
+    }
+    .m-habit-row.done { background: rgba(13,47,40,0.8); border: 1px solid rgba(52,211,153,0.4); }
+    .m-habit-row.pending { background: #161d2e; border: 1px solid rgba(255,255,255,0.06); }
+    .m-check-done {
+      width: 12px; height: 12px; border-radius: 4px; background: #34d399;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 7px; color: #07090f; flex-shrink: 0; font-weight: 700;
+    }
+    .m-check-empty {
+      width: 12px; height: 12px; border-radius: 4px;
+      border: 1.5px solid rgba(255,255,255,0.2); flex-shrink: 0;
+    }
+    .m-habit-name { font-size: 6.5px; font-weight: 600; color: #f0f4ff; }
+    .m-habit-streak-done { font-size: 5px; color: #34d399; }
+    .m-habit-streak { font-size: 5px; color: var(--muted); }
+
+    /* journal */
+    .m-prompt-card {
+      background: #161d2e; border-left: 2px solid #6366f1;
+      border-radius: 0 7px 7px 0; padding: 5px 7px; margin-bottom: 6px;
+    }
+    .m-prompt-label { font-size: 4.5px; color: #6366f1; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 2px; }
+    .m-prompt-text { font-size: 6px; color: #f0f4ff; line-height: 1.45; }
+    .m-moods { display: flex; gap: 5px; justify-content: center; font-size: 13px; margin-bottom: 6px; }
+    .m-mood-dim { opacity: 0.3; }
+    .m-textarea {
+      background: #161d2e; border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 7px; padding: 5px 7px; height: 68px; margin-bottom: 5px;
+      font-size: 5.5px; color: #c8d0e0; line-height: 1.55; overflow: hidden;
+    }
+    .m-save-btn {
+      background: linear-gradient(135deg,#6366f1,#ec4899);
+      border-radius: 7px; padding: 5px; text-align: center;
+      font-size: 6px; color: #fff; font-weight: 600;
+    }
+
+    /* stats row */
+    .m-stats {
+      display: flex; gap: 8px; align-items: center;
+      padding: 3px 9px; background: #0f1421;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 5.5px;
+    }
+
     /* ── Features ── */
     .features-grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -184,14 +357,22 @@
       border-color: rgba(99,102,241,0.4); transform: translateY(-4px);
       box-shadow: 0 12px 32px rgba(99,102,241,0.12);
     }
+    .feature-card.highlight { border-color: rgba(99,102,241,0.25); }
     .feature-icon-wrap {
       width: 44px; height: 44px; border-radius: 0.65rem;
       background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.2);
       display: flex; align-items: center; justify-content: center;
       font-size: 1.3rem; margin-bottom: 1rem;
     }
+    .feature-icon-wrap.teal { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.2); }
     .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; }
     .feature-card p { font-size: 0.9rem; color: var(--muted); line-height: 1.7; }
+    .feature-new-badge {
+      display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; background: rgba(52,211,153,0.12);
+      border: 1px solid rgba(52,211,153,0.3); color: var(--teal);
+      padding: 0.15rem 0.5rem; border-radius: 1rem; margin-bottom: 0.6rem;
+    }
 
     /* ── Modes ── */
     .modes-section { background: var(--surface); }
@@ -337,6 +518,10 @@
       .footer-cols { gap: 2.5rem; }
       .footer-bottom { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
       .hero-trust { gap: 1rem; }
+      .mockup-wrap:nth-child(1),
+      .mockup-wrap:nth-child(2),
+      .mockup-wrap:nth-child(3),
+      .mockup-wrap:nth-child(4) { transform: none; }
     }
   </style>
 </head>
@@ -350,6 +535,7 @@
       <span>InnerSpace</span>
     </a>
     <ul class="nav-links">
+      <li><a href="#preview">Preview</a></li>
       <li><a href="#features">Features</a></li>
       <li><a href="#modes">Modes</a></li>
       <li><a href="#privacy">Privacy</a></li>
@@ -375,13 +561,13 @@
       <button class="btn-primary" onclick="document.getElementById('download').scrollIntoView({behavior:'smooth'})">
         Download the App
       </button>
-      <a href="#features" class="btn-ghost">See all features</a>
+      <a href="#preview" class="btn-ghost">See it in action</a>
     </div>
     <div class="hero-trust">
       <div class="hero-trust-item"><span class="trust-dot">&#9679;</span> No account needed</div>
       <div class="hero-trust-item"><span class="trust-dot">&#9679;</span> All data on your device</div>
       <div class="hero-trust-item"><span class="trust-dot">&#9679;</span> 10 languages</div>
-      <div class="hero-trust-item"><span class="trust-dot">&#9679;</span> iOS &amp; Android</div>
+      <div class="hero-trust-item"><span class="trust-dot">&#9679;</span> Android &amp; iOS</div>
     </div>
   </div>
 </section>
@@ -391,51 +577,293 @@
   <div class="proof-inner">
     <div class="proof-item"><strong>35+</strong><span>Specialist AI helpers</span></div>
     <div class="proof-item"><strong>10</strong><span>Languages supported</span></div>
-    <div class="proof-item"><strong>4</strong><span>Interaction modes</span></div>
+    <div class="proof-item"><strong>5</strong><span>Core feature screens</span></div>
     <div class="proof-item"><strong>9</strong><span>Life categories</span></div>
     <div class="proof-item"><strong>0</strong><span>Data sent to servers</span></div>
   </div>
 </div>
+
+<!-- App Preview -->
+<section id="preview" class="section preview-section">
+  <div class="container center">
+    <div class="section-label">App Preview</div>
+    <h2 class="section-heading">Every screen, crafted with care</h2>
+    <p class="section-sub">Private, fast, and beautifully designed &mdash; five screens that work together to support your growth.</p>
+  </div>
+
+  <div class="container">
+    <div class="mockups-row">
+
+      <!-- Phone 1: Home Dashboard -->
+      <div class="mockup-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-l"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-screen">
+            <div class="m-sb"><span>9:41</span><span style="letter-spacing:1px">&#9679;&#9679;&#9679;</span></div>
+            <div class="m-body" style="padding-top:4px">
+              <div class="m-sub" style="margin-bottom:1px">Good morning &#9728;&#65039;</div>
+              <div class="m-title">Amit</div>
+
+              <!-- XP Card -->
+              <div class="m-card" style="margin-top:6px">
+                <div class="m-sub">Level: Building momentum</div>
+                <div class="m-bar-track" style="margin:4px 0 3px">
+                  <div class="m-bar-fill" style="width:57%"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between">
+                  <div class="m-sub">340 XP</div>
+                  <div class="m-sub">600 XP</div>
+                </div>
+              </div>
+
+              <div class="m-badge">&#128293; 5-day streak</div>
+
+              <!-- Mode grid -->
+              <div class="m-grid2" style="margin-top:7px">
+                <div class="m-mode-btn" style="border-color:rgba(99,102,241,0.35)">
+                  <div class="m-mode-emoji">&#128172;</div>
+                  <div class="m-mode-name">Just Talk</div>
+                </div>
+                <div class="m-mode-btn">
+                  <div class="m-mode-emoji">&#9989;</div>
+                  <div class="m-mode-name">My Habits</div>
+                </div>
+                <div class="m-mode-btn">
+                  <div class="m-mode-emoji">&#128212;</div>
+                  <div class="m-mode-name">Reflect</div>
+                </div>
+                <div class="m-mode-btn">
+                  <div class="m-mode-emoji">&#129300;</div>
+                  <div class="m-mode-name">Decide</div>
+                </div>
+              </div>
+
+              <div class="m-label" style="margin-top:7px">Recent</div>
+              <div class="m-card" style="display:flex;align-items:center;gap:4px">
+                <span style="font-size:9px">&#129504;</span>
+                <div>
+                  <div style="font-size:6px;color:#f0f4ff">Mindfulness Guide</div>
+                  <div class="m-sub">3 messages &bull; Today</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-label">Dashboard</div>
+      </div>
+
+      <!-- Phone 2: Chat + Habit Chip -->
+      <div class="mockup-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-l"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-screen">
+            <div class="m-sb"><span>9:41</span><span style="letter-spacing:1px">&#9679;&#9679;&#9679;</span></div>
+            <div class="m-nav">
+              <span class="m-nav-back">&#8592;</span>
+              <span class="m-nav-icon">&#129504;</span>
+              <span class="m-nav-title">Mindfulness Guide</span>
+            </div>
+            <div class="m-body" style="padding-top:8px;display:flex;flex-direction:column;height:248px;overflow:hidden">
+              <div class="m-bubble-user">How do I build a daily meditation habit?</div>
+              <div class="m-bubble-ai">Start with just 5 minutes each morning. Anchor it to an existing routine like breakfast or brushing your teeth. Focus on your breath and let thoughts pass without judgement&#8230;</div>
+              <div style="font-size:5px;color:var(--muted);align-self:flex-start;margin-top:-2px;margin-bottom:4px">Just now</div>
+            </div>
+            <!-- Habit chip -->
+            <div class="m-habit-chip">
+              <span style="font-size:10px;line-height:1">&#43;</span>
+              Add &#8220;Daily meditation&#8221; to Habits
+            </div>
+            <!-- Input bar -->
+            <div class="m-input-bar">
+              <div class="m-input-pill">Type a message&#8230;</div>
+              <div class="m-mic">&#127908;</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-label">AI Chat</div>
+      </div>
+
+      <!-- Phone 3: My Habits -->
+      <div class="mockup-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-l"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-screen">
+            <div class="m-sb"><span>9:41</span><span style="letter-spacing:1px">&#9679;&#9679;&#9679;</span></div>
+            <div class="m-nav">
+              <span class="m-nav-title">My Habits</span>
+              <span class="m-nav-icon" style="margin-right:4px;font-size:9px">&#127988;</span>
+              <span class="m-nav-icon" style="font-size:9px">&#9889;</span>
+            </div>
+            <div class="m-stats">
+              <span style="color:#f59e0b">&#128293; 7 days</span>
+              <span style="color:var(--muted)">&#8901;</span>
+              <span style="color:var(--muted)">340 XP</span>
+              <span style="color:var(--muted)">&#8901;</span>
+              <span style="color:#34d399">1/3 today</span>
+            </div>
+            <div class="m-body" style="padding-top:6px">
+              <div class="m-habit-row done">
+                <div class="m-check-done">&#10003;</div>
+                <div>
+                  <div class="m-habit-name">Morning meditation</div>
+                  <div class="m-habit-streak-done">&#128293; 12-day streak</div>
+                </div>
+              </div>
+              <div class="m-habit-row pending">
+                <div class="m-check-empty"></div>
+                <div>
+                  <div class="m-habit-name">Evening journaling</div>
+                  <div class="m-habit-streak">3-day streak</div>
+                </div>
+              </div>
+              <div class="m-habit-row pending">
+                <div class="m-check-empty"></div>
+                <div>
+                  <div class="m-habit-name">Daily walk</div>
+                  <div class="m-habit-streak">5-day streak</div>
+                </div>
+              </div>
+              <div class="m-habit-row pending" style="margin-top:1px">
+                <div class="m-check-empty"></div>
+                <div>
+                  <div class="m-habit-name">Read 10 pages</div>
+                  <div class="m-habit-streak">2-day streak</div>
+                </div>
+              </div>
+
+              <div class="m-card" style="margin-top:6px;text-align:center">
+                <div style="font-size:5.5px;color:var(--muted)">Complete all &rarr; earn <span style="color:#f59e0b">+24 XP</span> &#127942;</div>
+              </div>
+
+              <div style="margin-top:6px;background:linear-gradient(135deg,#6366f1,#ec4899);border-radius:7px;padding:5px;text-align:center">
+                <div style="font-size:6px;color:#fff;font-weight:600">&#43; Add new habit</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-label">My Habits</div>
+      </div>
+
+      <!-- Phone 4: Reflect / Journal -->
+      <div class="mockup-wrap">
+        <div class="phone">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-l"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-screen">
+            <div class="m-sb"><span>9:41</span><span style="letter-spacing:1px">&#9679;&#9679;&#9679;</span></div>
+            <div class="m-nav">
+              <span class="m-nav-title">Reflect</span>
+              <span style="font-size:5.5px;color:var(--muted)">Sat 14 Jun</span>
+            </div>
+            <div class="m-body" style="padding-top:7px">
+
+              <div class="m-prompt-card">
+                <div class="m-prompt-label">Today&#8217;s prompt</div>
+                <div class="m-prompt-text">&#8220;What is one thing that went better than expected today?&#8221;</div>
+              </div>
+
+              <div style="font-size:5.5px;color:var(--muted);margin-bottom:4px">How are you feeling?</div>
+              <div class="m-moods">
+                <span class="m-mood-dim">&#128542;</span>
+                <span class="m-mood-dim">&#128528;</span>
+                <span>&#128578;</span>
+                <span class="m-mood-dim">&#128522;</span>
+                <span class="m-mood-dim">&#128514;</span>
+              </div>
+
+              <div class="m-textarea">
+                My presentation actually went really well. I was nervous beforehand but the team responded really positively and asked great follow-up questions. I should trust myself more often&#8230;
+              </div>
+
+              <div class="m-save-btn">&#10024; Save &amp; Get AI Insight</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-label">Reflect</div>
+      </div>
+
+    </div><!-- /.mockups-row -->
+  </div>
+</section>
 
 <!-- Features -->
 <section id="features" class="section">
   <div class="container center">
     <div class="section-label">Features</div>
     <h2 class="section-heading">Everything you need to grow</h2>
-    <p class="section-sub">InnerSpace combines four powerful tools in one private, offline-first app.</p>
+    <p class="section-sub">InnerSpace combines five powerful tools in one private, offline-first app.</p>
   </div>
   <div class="container">
     <div class="features-grid">
+
       <div class="feature-card">
         <div class="feature-icon-wrap">&#129504;</div>
         <h3>AI That Truly Listens</h3>
         <p>Emotionally intelligent AI adapts to your tone and needs &mdash; warm, direct, or motivational &mdash; never judging, always present.</p>
       </div>
+
       <div class="feature-card">
         <div class="feature-icon-wrap">&#129309;</div>
         <h3>35+ Specialist Helpers</h3>
-        <p>Choose from a library of AI helpers across 9 life categories: career, relationships, wellness, creativity, and more.</p>
+        <p>Choose from a library of AI helpers across 9 life categories: career, relationships, wellness, creativity, finance, and more. Build your own with the custom helper creator.</p>
       </div>
+
       <div class="feature-card">
         <div class="feature-icon-wrap">&#128274;</div>
         <h3>100% On-Device Privacy</h3>
-        <p>All data stays on your phone. No servers, no tracking, no cloud uploads. Journal entries encrypted with AES-256-GCM.</p>
+        <p>All data stays on your phone. No servers, no tracking, no cloud uploads. Journal entries and habits encrypted with AES-256-GCM and a hardware-backed key.</p>
       </div>
+
       <div class="feature-card">
         <div class="feature-icon-wrap">&#127758;</div>
         <h3>10 Languages</h3>
-        <p>English, Spanish, French, German, Portuguese, Hindi, Japanese, Mandarin, Arabic, and Italian &mdash; fully localised.</p>
+        <p>English, Spanish, French, German, Portuguese, Hindi, Japanese, Mandarin, Arabic, and Italian &mdash; fully localised with automatic RTL layout support.</p>
       </div>
+
       <div class="feature-card">
         <div class="feature-icon-wrap">&#9889;</div>
         <h3>Local AI Option</h3>
-        <p>Run Gemma, Phi, or Llama entirely on your device &mdash; no API key, no internet, no data ever leaves your phone.</p>
+        <p>Run Gemma, Phi, or Llama entirely on your device &mdash; no API key, no internet, no data ever leaves your phone. Works even in airplane mode.</p>
       </div>
+
       <div class="feature-card">
         <div class="feature-icon-wrap">&#127919;</div>
         <h3>Personalised from Day One</h3>
-        <p>Choose your tone, pick your helpers, set your language. InnerSpace shapes itself around how you want to grow.</p>
+        <p>Choose your tone, pick your helpers, set your language. The onboarding flow remembers your preferences and shapes the entire experience around you.</p>
       </div>
+
+      <div class="feature-card highlight">
+        <div class="feature-new-badge">New</div>
+        <div class="feature-icon-wrap teal">&#127908;</div>
+        <h3>Voice Input</h3>
+        <p>Speak naturally instead of typing. Tap the microphone in any chat or journal screen &mdash; InnerSpace transcribes your words instantly using on-device speech recognition.</p>
+      </div>
+
+      <div class="feature-card highlight">
+        <div class="feature-new-badge">New</div>
+        <div class="feature-icon-wrap teal">&#127988;</div>
+        <h3>Goals &amp; Habit Linking</h3>
+        <p>Set meaningful goals with target dates and link them directly to your daily habits. See which habits are moving you toward each goal and stay on track.</p>
+      </div>
+
+      <div class="feature-card highlight">
+        <div class="feature-new-badge">New</div>
+        <div class="feature-icon-wrap teal">&#10024;</div>
+        <h3>Smart Habit Suggestions</h3>
+        <p>Ask your AI helper about building a new habit and a one-tap chip appears at the bottom of the chat to add it straight to your tracker &mdash; no copy-paste needed.</p>
+      </div>
+
     </div>
   </div>
 </section>
@@ -443,60 +871,85 @@
 <!-- Modes -->
 <section id="modes" class="section modes-section">
   <div class="container center">
-    <div class="section-label">Four modes</div>
-    <h2 class="section-heading">One app, four ways to grow</h2>
-    <p class="section-sub">Engage however you need to on any given day &mdash; talk, track, reflect, or decide.</p>
+    <div class="section-label">Five modes</div>
+    <h2 class="section-heading">One app, five ways to grow</h2>
+    <p class="section-sub">Engage however you need to on any given day &mdash; talk, track, reflect, decide, or set goals.</p>
   </div>
   <div class="container">
     <div class="modes-grid">
+
       <div class="mode-card">
         <div class="mode-number">Mode 01</div>
         <div class="mode-icon">&#128172;</div>
         <h3>Just Talk</h3>
-        <p>Have a real conversation with any specialist helper. Multi-turn chats with full history and emoji reactions.</p>
+        <p>Have a real conversation with any specialist helper. Multi-turn chats with full history, emoji reactions, voice input, and streaming responses.</p>
         <ul class="mode-list">
           <li>35+ specialist helpers</li>
           <li>Full conversation history</li>
           <li>Auto-generated summaries</li>
           <li>Custom agent builder</li>
+          <li>Voice input (speech-to-text)</li>
+          <li>Smart habit suggestions from chat</li>
         </ul>
       </div>
+
       <div class="mode-card">
         <div class="mode-number">Mode 02</div>
         <div class="mode-icon">&#9989;</div>
         <h3>My Habits</h3>
-        <p>Track your daily wins. Mark habits complete, earn XP, and build unstoppable streaks with AI check-ins.</p>
+        <p>Track your daily wins. Mark habits complete, earn XP, and build unstoppable streaks with AI check-ins. Set goals and link habits to them.</p>
         <ul class="mode-list">
           <li>Custom habit creation</li>
           <li>Streak tracking &amp; XP rewards</li>
           <li>AI gentle nudge on missed days</li>
-          <li>Progress heatmap</li>
+          <li>Goals with target dates</li>
+          <li>Link habits to goals</li>
+          <li>AI habit suggestions</li>
         </ul>
       </div>
+
       <div class="mode-card">
         <div class="mode-number">Mode 03</div>
         <div class="mode-icon">&#128212;</div>
         <h3>Reflect</h3>
-        <p>Journal daily with AI-generated prompts. Get insights and track your emotional growth over time.</p>
+        <p>Journal daily with AI-generated prompts. Speak your thoughts aloud, get insights, and track your emotional growth over time.</p>
         <ul class="mode-list">
           <li>Daily rotating prompts</li>
           <li>AI-powered insights</li>
-          <li>Mood check-ins</li>
+          <li>Mood check-ins (5-point scale)</li>
+          <li>Voice input support</li>
           <li>Full journal history</li>
+          <li>XP rewards for consistency</li>
         </ul>
       </div>
+
       <div class="mode-card">
         <div class="mode-number">Mode 04</div>
         <div class="mode-icon">&#129300;</div>
         <h3>Decide</h3>
-        <p>Work through tough decisions with a structured two-option framework and a clarity score for every choice.</p>
+        <p>Work through tough decisions with a structured two-option framework and a clarity score for every choice. Save and revisit past decisions.</p>
         <ul class="mode-list">
-          <li>Structured analysis</li>
+          <li>Structured two-option analysis</li>
           <li>AI clarity scoring</li>
           <li>Pro &amp; con breakdown</li>
           <li>Decision history</li>
+          <li>Session persistence</li>
         </ul>
       </div>
+
+      <div class="mode-card">
+        <div class="mode-number">Mode 05</div>
+        <div class="mode-icon">&#127988;</div>
+        <h3>Goals</h3>
+        <p>Set meaningful personal goals with target dates. Link your existing habits to each goal so every daily action moves you closer to what matters most.</p>
+        <ul class="mode-list">
+          <li>Goal creation with target dates</li>
+          <li>Link multiple habits to a goal</li>
+          <li>Track goal progress over time</li>
+          <li>Access from Habits screen</li>
+        </ul>
+      </div>
+
     </div>
   </div>
 </section>
@@ -515,23 +968,27 @@
         <ul class="privacy-list">
           <li>
             <div class="check-icon">&#10003;</div>
-            <div><strong>Zero-server architecture</strong><span>All data stored locally via AsyncStorage and expo-secure-store.</span></div>
+            <div><strong>Zero-server architecture</strong><span>All data stored locally via AsyncStorage and expo-secure-store. No backend infrastructure exists.</span></div>
           </li>
           <li>
             <div class="check-icon">&#10003;</div>
-            <div><strong>AES-256-GCM encryption at rest</strong><span>Journal entries and habits encrypted with a hardware-backed key.</span></div>
+            <div><strong>AES-256-GCM encryption at rest</strong><span>Journal entries, habits, and conversations encrypted with a hardware-backed key stored in the secure enclave.</span></div>
           </li>
           <li>
             <div class="check-icon">&#10003;</div>
-            <div><strong>Your API keys, your control</strong><span>Keys stored in the secure enclave &mdash; never transmitted to InnerSpace.</span></div>
+            <div><strong>Your API keys, your control</strong><span>Keys are stored on-device in the OS secure enclave &mdash; never transmitted to InnerSpace or any third party.</span></div>
           </li>
           <li>
             <div class="check-icon">&#10003;</div>
-            <div><strong>Dual-layer AI safety filter</strong><span>Pre-send and post-response filtering. No medical, clinical, or crisis advice.</span></div>
+            <div><strong>Dual-layer AI safety filter</strong><span>Pre-send and post-response filtering. No medical, clinical, legal, or crisis advice is ever given.</span></div>
           </li>
           <li>
             <div class="check-icon">&#10003;</div>
-            <div><strong>Full data export &amp; delete</strong><span>Export everything as JSON. Uninstall and it is gone. Always.</span></div>
+            <div><strong>App lock &mdash; PIN or biometric</strong><span>Lock the entire app behind your fingerprint, Face ID, or a custom PIN. Auto-locks when backgrounded.</span></div>
+          </li>
+          <li>
+            <div class="check-icon">&#10003;</div>
+            <div><strong>Full data export &amp; delete</strong><span>Export everything as an encrypted JSON backup. Uninstall and it is gone. Always.</span></div>
           </li>
         </ul>
       </div>
@@ -539,7 +996,8 @@
         <span class="shield-emoji">&#128737;&#65039;</span>
         <div class="green-badge">&#10003; Zero-server design</div><br />
         <div class="green-badge">&#10003; AES-256-GCM encrypted</div><br />
-        <div class="green-badge">&#10003; No tracking or analytics</div>
+        <div class="green-badge">&#10003; No tracking or analytics</div><br />
+        <div class="green-badge">&#10003; PIN &amp; biometric app lock</div>
         <p>
           InnerSpace is a personal project by <strong>Amit Gaikwad</strong>, not a company.
           There is no team harvesting your data &mdash; because there is no team.
@@ -559,17 +1017,17 @@
     <div class="testimonials-grid">
       <div class="testimonial-card">
         <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote>"This app has become part of my daily routine. The AI helper feels like a real friend who actually understands where I'm coming from."</blockquote>
+        <blockquote>"This app has become part of my daily routine. The AI helper feels like a real friend who actually understands where I&rsquo;m coming from. And knowing nothing leaves my phone makes me completely honest."</blockquote>
         <div class="t-author"><strong>Alex M.</strong><span>Software Engineer</span></div>
       </div>
       <div class="testimonial-card">
         <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote>"Finally an app that doesn't feel gimmicky. The four modes mean I can engage however I need to &mdash; no pressure, just support."</blockquote>
+        <blockquote>"Finally an app that doesn&rsquo;t feel gimmicky. The five modes mean I can engage however I need to &mdash; no pressure, just support. The habit chip suggestion from chat is so clever!"</blockquote>
         <div class="t-author"><strong>Priya K.</strong><span>Product Manager</span></div>
       </div>
       <div class="testimonial-card">
         <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <blockquote>"The privacy angle is huge for me. Knowing nothing leaves my phone is a game-changer. I can be completely honest with the AI."</blockquote>
+        <blockquote>"The privacy angle is huge for me. Knowing nothing leaves my phone is a game-changer. I linked my exercise goal to three habits and can actually see myself making progress."</blockquote>
         <div class="t-author"><strong>Marcus T.</strong><span>Healthcare Professional</span></div>
       </div>
     </div>
@@ -608,6 +1066,7 @@
         <div class="footer-col">
           <h5>Product</h5>
           <ul>
+            <li><a href="#preview">Preview</a></li>
             <li><a href="#features">Features</a></li>
             <li><a href="#modes">Modes</a></li>
             <li><a href="#privacy">Privacy</a></li>

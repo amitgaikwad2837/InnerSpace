@@ -15,27 +15,30 @@ InnerSpace helps you build habits, journal your thoughts, navigate decisions, an
 
 ## Features
 
-### Four Interaction Modes
+### Five Interaction Modes
 | Mode | Description |
 |------|-------------|
 | **Just Talk** | Multi-turn AI conversations with 35+ specialist helpers across 9 life categories |
 | **My Habits** | Daily/weekly habit tracking with streaks, XP rewards, and AI check-ins |
-| **Reflect** | Guided journaling with rotating prompts and AI-generated insights |
-| **Decide** | Structured two-option decision analysis with a clarity score |
+| **Reflect** | Guided journaling with rotating prompts, mood check-ins, and AI-generated insights |
+| **Decide** | Structured two-option decision analysis with a clarity score and session history |
+| **Goals** | Set personal goals with target dates and link habits to them for daily progress |
 
 ### Privacy-First Design
 - All data stored locally via AsyncStorage + expo-secure-store
-- Journal entries and habits encrypted with **AES-256-GCM**
+- Journal entries, habits, and conversations encrypted with **AES-256-GCM**
 - API keys kept in the hardware-backed secure enclave — never transmitted
 - No backend servers, no analytics, no tracking
+- **App lock** — PIN, biometric, or both; auto-locks when the app is backgrounded
 
 ### Other Highlights
 - **35+ helpers** across career, wellness, relationships, creativity, and more
 - **Custom helpers** — build your own and share them via deep link
 - **10 languages** — English, Spanish, French, German, Portuguese, Hindi, Japanese, Mandarin, Arabic, Italian
-- **Local AI option** — run Gemma / Phi / Llama on-device with no API key
-- **Multi-provider AI** — Gemini (default), OpenAI, Claude, Groq
-- **App lock** — PIN, biometric, or both
+- **Voice input** — tap the mic in chat or journal to speak instead of type (Android speech recognition)
+- **Smart habit suggestions** — chat about building a habit and a one-tap chip adds it to My Habits
+- **Local AI option** — run Gemma / Phi / Llama on-device with no API key or internet
+- **Multi-provider AI** — Gemini (default), OpenAI, Claude, Groq with automatic quota failover
 - **Guest-first** — no account required to start
 
 ---
@@ -92,14 +95,28 @@ InnerSpace/
 ├── index.ts                   # Expo entry point
 ├── app.json                   # Expo config (bundle ID, version, permissions)
 ├── src/
-│   ├── screens/               # One file per screen (HomeScreen, ChatScreen, etc.)
+│   ├── screens/
+│   │   ├── HomeScreen.tsx     # Dashboard: XP, streak, mood, quick access
+│   │   ├── ChatScreen.tsx     # AI conversation with voice input & habit chip
+│   │   ├── HabitsScreen.tsx   # Habit tracker with streaks and XP
+│   │   ├── GoalsScreen.tsx    # Goal setting with habit linking
+│   │   ├── JournalScreen.tsx  # Guided journaling with mood and AI insight
+│   │   ├── DecisionScreen.tsx # Two-option decision analysis with clarity score
+│   │   ├── AgentsScreen.tsx   # Browse & pin 35+ specialist helpers
+│   │   ├── HistoryScreen.tsx  # Past conversations with search
+│   │   ├── SettingsScreen.tsx # AI provider, app lock, backup, language
+│   │   ├── SetupFlowScreen.tsx # Onboarding: language, AI mode, model download
+│   │   ├── CreateAgentScreen.tsx # Custom helper builder
+│   │   └── SignInScreen.tsx   # Optional Google OAuth sign-in
 │   ├── services/              # Business logic (AI, storage, encryption, safety)
 │   ├── constants/             # Shared constants (agents catalog URL, legal keys)
 │   ├── context/               # ThemeContext (dark/light/system)
 │   ├── store/                 # Zustand auth store
 │   ├── i18n/                  # i18next setup + 10 locale files
 │   ├── types/                 # Shared TypeScript types
+│   ├── components/            # ErrorBoundary, AppTour, InnerSpaceLogo
 │   └── utils/                 # Date helpers
+├── modules/mediapipe-llm/     # Expo local module for on-device Gemma 2B (scaffolded)
 ├── assets/                    # App icon, splash screen, Android adaptive icon
 ├── docs/                      # GitHub Pages marketing website
 │   ├── index.html
